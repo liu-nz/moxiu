@@ -6,7 +6,7 @@ import { SLOT_MAP, enhanceCost, enhanceSuccess, ENHANCE_MAX, effectiveStats, tie
 import { skillUpgradeCost } from '../data/skills.js';
 import { techEquipment } from '../data/equipment.js';
 import { ITEM_MAP, CONSUMABLE_MAP } from '../data/items.js';
-import { computeAttrs } from './character.js';
+import { computeAttrs, combatPower, guildMods } from './character.js';
 import { applyBreakthroughPill } from './cultivation.js';
 import { removeItem, addItem } from './inventory.js';
 import { researchEffects } from '../data/research.js';
@@ -17,6 +17,28 @@ import { emit, EV } from '../core/bus.js';
 import { fmtInt, clamp } from '../core/util.js';
 
 /* ---------------- 装备 ---------------- */
+/** 用替换后的整套配装计算收益，不修改背包或槽位。 */
+export function previewBuildSwap(state, kind, uid, slotKey) {
+  let item, old, next;
+  if (kind === 'equipment') {
+    item = state.bag.find((e) => e.uid === uid);
+    if (!item || !SLOT_MAP[item.slot]) return { ok: false, reason: '装备已不在装备库。' };
+    old = state.equipment[item.slot];
+    next = { ...state, equipment: { ...state.equipment, [item.slot]: item } };
+  } else if (kind === 'skill') {
+    item = state.skillBag.find((s) => s.uid === uid);
+    if (state.player.stage < 4 || !SKILL_SLOT_KEYS.includes(slotKey)
+      || !item || item.slot !== slotTypeOf(slotKey)) return { ok: false, reason: '功法或槽位不可用。' };
+    old = state.skills[slotKey];
+    next = { ...state, skills: { ...state.skills, [slotKey]: item } };
+  } else return { ok: false, reason: '未知配装类型。' };
+  const before = computeAttrs(state), after = computeAttrs(next);
+  const powerBefore = combatPower(state), powerAfter = combatPower(next);
+  const changes = Object.keys(before).filter((k) => typeof before[k] === 'number' && Math.abs(after[k] - before[k]) > 1e-7)
+    .map((key) => ({ key, before: before[key], after: after[key], delta: after[key] - before[key] }));
+  return { ok: true, item, old, before, after, powerBefore, powerAfter, changes };
+}
+
 export function equipItem(state, eqUid) {
   const idx = state.bag.findIndex((e) => e.uid === eqUid);
   if (idx < 0) return { ok: false, reason: '找不到这件装备。' };
@@ -232,7 +254,7 @@ export function useConsumable(state, id) {
     applyBreakthroughPill(state, c.effect.add);
     logGood(state, `服下「${c.name}」，下次突破成功率 +${Math.round(c.effect.add * 100)}%。`);
   } else if (c.effect.type === 'stamina') {
-    state.player.stamina = Math.min(100, state.player.stamina + c.effect.add);
+    state.player.stamina = Math.min(100 + (guildMods(state).staminaMax || 0), state.player.stamina + c.effect.add);
     logGood(state, `服下「${c.name}」，体力 +${c.effect.add}。`);
   } else if (c.effect.type === 'cultivation_boost') {
     state.player.buffs.push({

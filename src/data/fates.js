@@ -16,8 +16,8 @@ export const FATES = [
   },
   {
     id: 'alchemy', name: '丹道天命', icon: '丹',
-    effect: '开局自带炼丹房和种子，炼丹效果 +40%，但战斗能力 -15%',
-    mods: { alchemyAdd: 0.40, atkMul: -0.15, startSeeds: true, startPlots: 2 },
+    effect: '开局灵田 +2 块，炼丹成功率 +40%，但攻击 -15%',
+    mods: { alchemyAdd: 0.40, atkMul: -0.15, startPlots: 2 },
     fit: '适合炼丹流',
   },
   {
@@ -28,8 +28,8 @@ export const FATES = [
   },
   {
     id: 'speed', name: '速道天命', icon: '速',
-    effect: '修炼速度 +40%，但寿命 -20%，需要更快突破',
-    mods: { cultSpeedAdd: 0.40, breakthroughAdd: 0.05, lifespanMul: -0.20 },
+    effect: '修炼速度 +40%，突破成功率 +5%',
+    mods: { cultSpeedAdd: 0.40, breakthroughAdd: 0.05 },
     fit: '适合冲级流',
   },
 ];

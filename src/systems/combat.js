@@ -12,6 +12,7 @@
 import { computeAttrs, combatLevel, techEffects, combatPower } from './character.js';
 import { statMultOf } from '../data/realms.js';
 import { clamp } from '../core/util.js';
+import { DUNGEON_COUNTERS } from '../data/dungeons.js';
 
 export function defenseReduction(def, level, scale = 1) {
   const d = Math.max(0, def);
@@ -24,8 +25,7 @@ export function elementMultiplier(state, dungeon) {
   let m = 1;
   const fx = techEffects(state);
   const tags = dungeon?.tags || [];
-  if (tags.includes('dark') && fx.has('light_boost')) m *= 2;
-  if (tags.includes('poison') && fx.has('poison_immunity')) m *= 1.35;
+  for (const c of DUNGEON_COUNTERS) if (tags.includes(c.tag) && fx.has(c.effect)) m *= c.damage;
   return m;
 }
 
@@ -34,8 +34,7 @@ export function techDamageReduce(state, dungeon) {
   const fx = techEffects(state);
   const tags = dungeon?.tags || [];
   let r = 0;
-  if (tags.includes('poison') && fx.has('poison_immunity')) r += 0.20;
-  if (tags.includes('fire') && fx.has('heat_shield')) r += 0.25;
+  for (const c of DUNGEON_COUNTERS) if (tags.includes(c.tag) && fx.has(c.effect)) r += c.reduce;
   return r;
 }
 
@@ -78,6 +77,7 @@ export function simulateBattle(state, enemy, ctx = {}) {
   const playerScale = ctx.scale || statMultOf(state.player.stage);
   const intel = !!ctx.intel;
   const isBoss = !!enemy.boss;
+  const rng = ctx.rng || Math.random;
   const CHARGE_EVERY = 4;
   const CHARGE_START = 5;
   const CHARGE_MUL = 1.5;
@@ -100,7 +100,8 @@ export function simulateBattle(state, enemy, ctx = {}) {
   };
 
   const pets = (ctx.pets || []).filter((p) => p && p.hp > 0);
-  const petDps = pets.reduce((s, p) => s + p.atk * (1 + (p.level - 1) * 0.12), 0);
+  // deployedBeasts 已应用等级成长，此处只使用最终攻击。
+  const metrics = { playerDamage: 0, petDamage: 0, incomingDamage: 0, healing: 0, crits: 0, dodges: 0 };
 
   const log = [];
   const chargeLog = [];
@@ -117,10 +118,19 @@ export function simulateBattle(state, enemy, ctx = {}) {
   };
 
   const petTurn = () => {
-    if (petDps <= 0 || foe.hp <= 0) return;
-    const d = Math.max(1, Math.round(petDps * defenseReduction(foe.def, level, playerScale) * 0.5));
-    foe.hp -= d;
-    log.push(`　　灵兽合击，追加 ${d} 伤害。`);
+    for (const pet of pets) {
+      if (pet.atk <= 0 || foe.hp <= 0) continue;
+      const critical = pet.id === 'linghu' && rng() < 0.30;
+      const combo = pet.id === 'canglang' && rng() < 0.25;
+      const hits = combo ? 2 : 1;
+      for (let i = 0; i < hits && foe.hp > 0; i++) {
+        const damage = Math.max(1, Math.round(pet.atk * defenseReduction(foe.def, level, playerScale)
+          * 0.5 * (critical ? 1.6 : 1) * (1 + a.beastBattleDamage)));
+        foe.hp -= damage;
+        metrics.petDamage += damage;
+        log.push(`　　${pet.name || '灵兽'}合击${critical ? '（暴击）' : combo ? '（连击）' : ''}，追加 ${damage} 伤害。`);
+      }
+    }
   };
 
   while (player.hp > 0 && foe.hp > 0 && rounds < maxRounds) {
@@ -130,12 +140,16 @@ export function simulateBattle(state, enemy, ctx = {}) {
       const r = strike(player, foe, {
         skillPower: a.skillPower, critRate: a.critRate, critDmg: a.critDmg,
         lifesteal: a.lifesteal, dodge: 0, dmgReduce: 0, level,
-        element, defScale: playerScale,
+        element: element * (1 + a.beastBattleDamage), defScale: playerScale, rng,
       });
       if (r.miss) { log.push(`第${rounds}回合：你出手落空。`); return; }
       foe.hp -= r.dmg;
-      if (r.heal) player.hp = Math.min(player.hpMax, player.hp + r.heal);
-      log.push(`第${rounds}回合：你造成 ${r.dmg} 伤害${r.crit ? '（暴击）' : ''}${r.heal ? `，吸血 ${r.heal}` : ''}。`);
+      metrics.playerDamage += r.dmg;
+      metrics.crits += r.crit ? 1 : 0;
+      const healing = Math.max(0, Math.min(player.hpMax - player.hp, r.heal));
+      metrics.healing += healing;
+      if (r.heal) player.hp += healing;
+      log.push(`第${rounds}回合：你造成 ${r.dmg} 伤害${r.crit ? '（暴击）' : ''}${healing ? `，吸血 ${healing}` : ''}。`);
       petTurn();
     };
 
@@ -145,11 +159,12 @@ export function simulateBattle(state, enemy, ctx = {}) {
         skillPower: 0, critRate: 0.05, critDmg: 0.2,
         lifesteal: 0, dodge: a.dodge,
         dmgReduce: clamp(a.dmgReduce + extraReduce, 0, 0.85),
-        level, element: 1, defScale: playerScale,
+        level, element: 1, defScale: playerScale, rng,
       });
-      if (r.miss) { log.push(`第${rounds}回合：${foe.name} 的攻击被你闪开。`); return; }
+      if (r.miss) { metrics.dodges++; log.push(`第${rounds}回合：${foe.name} 的攻击被你闪开。`); return; }
       const dmg = charging ? Math.round(r.dmg * CHARGE_MUL) : r.dmg;
       player.hp -= dmg;
+      metrics.incomingDamage += dmg;
       if (charging) {
         chargeLog.push(rounds);
         log.push(`第${rounds}回合：【蓄力·大招】${foe.name} 造成 ${dmg} 伤害。`);
@@ -165,6 +180,8 @@ export function simulateBattle(state, enemy, ctx = {}) {
   const win = foe.hp <= 0 && player.hp > 0;
   return {
     win,
+    outcome: win ? 'victory' : player.hp <= 0 ? 'defeat' : 'timeout',
+    metrics,
     rounds,
     playerHp: Math.max(0, Math.round(player.hp)),
     playerHpMax: player.hpMax,

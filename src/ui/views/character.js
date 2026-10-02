@@ -8,7 +8,7 @@ import {
 } from '../../systems/character.js';
 import { SLOTS, SLOT_MAP, TIER_MAP, tierOf, effectiveStats, equipmentScore } from '../../data/equipment.js';
 import {
-  equipItem, unequip, enhance, enhancePreview, scrapEquipment,
+  equipItem, unequip, enhance, enhancePreview, scrapEquipment, previewBuildSwap,
   equipTech, unequipTech, equipSkill, unequipSkill, upgradeSkill, scrapSkill,
   SKILL_SLOT_KEYS, SKILL_SLOT_LABEL, slotTypeOf,
 } from '../../systems/gear.js';
@@ -35,6 +35,55 @@ function statLines(stats) {
       h('span.t-num', { text: fmtSigned(v, ATTR_IS_PCT.has(k) ? 2 : 0) }),
       h('span.t-dimmer', { text: '　' }),
     ));
+}
+
+function buildChanges(p) {
+  return h('div', null,
+    h('dl.kv', null, h('dt', { text: '估算战力' }), h('dd.t-num', { text: `${fmtInt(p.powerBefore)} → ${fmtInt(p.powerAfter)}` })),
+    ...p.changes.filter((x) => ATTR_NAME[x.key]).map((x) => h('dl.kv', null,
+      h('dt', { text: ATTR_NAME[x.key] }),
+      h('dd.t-num', { text: `${statText(x.key, x.before)} → ${statText(x.key, x.after)}` }))),
+    !p.changes.length ? h('p.t-xs.t-dim', { text: '总属性没有变化，可能已达到属性上限。' }) : null,
+  );
+}
+
+function confirmBuildSwap(state, ctx, kind, uid, key) {
+  let p = previewBuildSwap(state, kind, uid, key);
+  if (!p.ok) { showToast(p.reason, 'warn'); return; }
+  const body = h('div');
+  const draw = (changed = false) => body.replaceChildren(
+    h('p.t-sm.mb-2', { text: `${p.old?.name || '空槽位'} → ${p.item.name}` }),
+    buildChanges(p),
+    h('p.t-xs.t-dim.mt-2', { text: changed ? '配装已变化，预览已更新，请再次确认。' : '按整套属性与当前上限比较；估算战力用于参考，原配装会回到库中。' }));
+  draw();
+  const signature = (v) => JSON.stringify([v.old, v.item, v.before, v.after]);
+  ctx.modal({ title: kind === 'skill' ? '功法替换预览' : '装备替换预览', body,
+    actions: [{ label: '取消' }, { label: '确认替换', primary: true, keepOpen: true, onClick: () => {
+      const current = previewBuildSwap(state, kind, uid, key);
+      if (!current.ok) { showToast(current.reason, 'warn'); ctx.closeOverlay(); return; }
+      if (signature(current) !== signature(p)) { p = current; draw(true); return; }
+      const r = kind === 'skill' ? equipSkill(state, uid, key) : equipItem(state, uid);
+      if (!r.ok) { showToast(r.reason, 'warn'); return; }
+      ctx.closeOverlay(); ctx.rerender();
+    } }],
+  });
+}
+
+function skillPicker(state, ctx, key) {
+  const candidates = state.skillBag.filter((s) => s.slot === slotTypeOf(key));
+  ctx.modal({ title: `选择功法 · ${SKILL_SLOT_LABEL[key]}`,
+    subtitle: '先比较整套收益，再选择替换',
+    body: h('div', null, ...candidates.map((sk) => {
+      const p = previewBuildSwap(state, 'skill', sk.uid, key);
+      return h('div.rowitem', null,
+        h('div.rowitem-main', null,
+          h('div.rowitem-name', { text: `${sk.name} · 第 ${sk.level} 重` }),
+          h('div.rowitem-meta', { text: `战力 ${fmtInt(p.powerBefore)} → ${fmtInt(p.powerAfter)}` })),
+        h('button.btn.btn-sm', { text: '比较此功法', onclick: () => {
+          ctx.closeOverlay(); confirmBuildSwap(state, ctx, 'skill', sk.uid, key);
+        } }));
+    })), actions: [{ label: '返回' }],
+  });
 }
 
 function skillPreviewModal(state, ctx, key) {
@@ -246,7 +295,7 @@ export function renderCharacter(state, ctx) {
         h('div.rowitem-main', null,
           h('div.rowitem-title', null, h('span.rowitem-name', { text: t.name })),
           h('div.rowitem-meta', {
-            text: { light_boost: '阴系副本伤害 ×2', poison_immunity: '毒系副本自动解毒', flat_atk: `攻击 +${t.stats.atk || 0}` }[t.tech] || '',
+            text: { light_boost: '阴系副本伤害 ×2', poison_immunity: '毒系伤害 ×1.35，额外减伤 20%', heat_shield: '炼狱系额外减伤 25%', flat_atk: `攻击 +${t.stats.atk || 0}` }[t.tech] || '',
           }),
         ),
         h('div.rowitem-act', null,
@@ -272,7 +321,7 @@ export function renderCharacter(state, ctx) {
                   h('span.rowitem-name', { class: TIER_MAP.rare.cls, text: sk.name }),
                   h('span.tag', { text: `第 ${sk.level} 重` }),
                 ),
-                h('div.rowitem-meta', null, ...statLines(sk.stats)),
+                h('div.rowitem-meta', null, ...statLines(Object.fromEntries(Object.entries(sk.stats).map(([k, v]) => [k, v * (1 + (sk.level - 1) * 0.18)])))),
               )
               : h('div.t-sm.t-dimmer', { text: '空' }),
           ),
@@ -291,12 +340,7 @@ export function renderCharacter(state, ctx) {
             candidates.length
               ? h('button.btn.btn-sm.btn-solid', {
                 text: `换（${candidates.length}）`,
-                onclick: () => {
-                  const best = candidates.slice().sort((x, y) => 0)[0];
-                  const r = equipSkill(state, best.uid, key);
-                  if (!r.ok) showToast(r.reason, 'warn');
-                  ctx.rerender();
-                },
+                onclick: () => skillPicker(state, ctx, key),
               })
               : null,
           ),
@@ -305,7 +349,7 @@ export function renderCharacter(state, ctx) {
       state.skillBag.length
         ? h('div', { style: 'padding:12px 16px;border-top:1px solid var(--line)' },
           h('div.t-xs.t-dim.mb-2', { text: `功法库（${state.skillBag.length}）` }),
-          ...state.skillBag.slice(0, 12).map((s) => h('div.flex-between', { style: 'padding:3px 0' },
+          ...state.skillBag.map((s) => h('div.flex-between', { style: 'padding:3px 0' },
             h('span.t-sm', { text: s.name }),
             h('span', null,
               h('span.t-xs.t-dimmer', { text: slotTypeOf('move1') === s.slot ? '招式' : s.slot === 'heart' ? '心法' : '特殊' }),
@@ -323,7 +367,6 @@ export function renderCharacter(state, ctx) {
       ? state.bag
         .slice()
         .sort((x, y) => equipmentScore(y) - equipmentScore(x))
-        .slice(0, 14)
         .map((eq) => h('div.rowitem', null,
           h('div.rowitem-main', null,
             h('div.rowitem-title', null,
@@ -335,7 +378,7 @@ export function renderCharacter(state, ctx) {
             h('div.rowitem-meta', null, ...statLines(effectiveStats(eq, a.enhanceBonus))),
           ),
           h('div.rowitem-act', null,
-            h('button.btn.btn-sm.btn-solid', { text: '装备', onclick: () => { equipItem(state, eq.uid); ctx.rerender(); } }),
+            h('button.btn.btn-sm.btn-solid', { text: '比较装备', onclick: () => confirmBuildSwap(state, ctx, 'equipment', eq.uid) }),
             h('button.btn.btn-sm.btn-ghost', { text: '分解', onclick: () => { scrapEquipment(state, eq.uid); ctx.rerender(); } }),
           ),
         ))
@@ -369,6 +412,11 @@ export function renderCharacter(state, ctx) {
   );
 
   return h('div.flex-col.gap-4', null,
+    panel('配装准备', '战力用于参考，副本机制同样重要',
+      h('p.t-sm', { text: state.player.stage >= 4 ? `功法已装 ${SKILL_SLOT_KEYS.filter(k => state.skills[k]).length} / 4 槽 · 上阵灵兽 ${state.beasts.deployed.length} / 2` : '炼气五层解锁四功法槽，当前可先准备装备与随身科技。' }),
+      state.side === 'cultivation'
+        ? h('div.btn-row.mt-2', null, h('button.btn.btn-sm', { text: '查看秘境机制', onclick: () => ctx.navigate('dungeon') }), h('button.btn.btn-sm', { text: '调整灵兽', onclick: () => ctx.navigate('farm') }))
+        : h('button.btn.btn-sm.mt-2', { text: '前往界门，准备秘境与灵兽', onclick: () => ctx.navigate('gate') })),
     h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px' }, primary, secondary),
     equipPanel, techPanel, skillPanel, bagEquip, bagGoods, saveSection(state, ctx),
   );

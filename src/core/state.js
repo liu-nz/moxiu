@@ -35,6 +35,7 @@ export function createInitialState(nowMs) {
       mp: null,
       stamina: 100,
       staminaAcc: 0,
+      ascensionReady: false,
       breakthroughFails: 0,
       breakthroughBuff: 0,    // 一次性突破加成（筑基丹）
       buffs: [],              // [{id, name, until, mods}]
@@ -146,6 +147,7 @@ export function createInitialState(nowMs) {
       blessings: {},          // { [blessingId]: level }
       codex: {},
       fate: null,
+      awaitingFate: false,
       freePathSwitchAt: 0,
     },
 

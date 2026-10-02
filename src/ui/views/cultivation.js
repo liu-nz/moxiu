@@ -6,7 +6,7 @@ import { h, panel, bar, kv } from '../dom.js';
 import { FLAT_STAGES, stageInfo, TIER_SUCCESS, BREAKTHROUGH_PITY, BREAKTHROUGH_FAIL_LOSS } from '../../data/realms.js';
 import { researchEffects } from '../../data/research.js';
 import { computeAttrs } from '../../systems/character.js';
-import { cultivationRate, stageProgress, breakthroughInfo, attemptBreakthrough } from '../../systems/cultivation.js';
+import { cultivationRate, stageProgress, breakthroughInfo, attemptBreakthrough, breakthroughLossMultiplier } from '../../systems/cultivation.js';
 import { combatPower } from '../../systems/combat.js';
 import { PATHS, getPath } from '../../data/paths.js';
 import { fmtInt, fmtPct, fmtShort, fmtDuration } from '../../core/util.js';
@@ -16,12 +16,13 @@ import { switchPath, pathSwitchStatus } from '../../systems/gear.js';
 import { showToast } from '../dom.js';
 
 function breakthroughModal(state, ctx) {
+  if (state.player.ascensionReady) { ctx.ascendModal(); return; }
   const info = breakthroughInfo(state);
   if (!info.available) { showToast(info.reason, 'warn'); return; }
   if (info.locked) { showToast(info.reason, 'warn'); return; }
 
   const attrs = computeAttrs(state);
-  const lossMul = researchEffects(state).breakthroughLossMul;
+  const lossMul = breakthroughLossMultiplier(state);
   const rows = [
     kv('当前境界', `${info.from.realm.name} · ${info.from.stage.name}`),
     kv('目标', info.ascension ? '飞升轮回' : `${info.toRealm.name} · 初期`),

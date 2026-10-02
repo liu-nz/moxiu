@@ -23,6 +23,7 @@ import { renderLifestyle } from './views/lifestyle.js';
 
 import { on, emit, EV } from '../core/bus.js';
 import { SIDE, SIDE_NAME } from '../core/state.js';
+import { staminaMax, staminaEta } from '../systems/dungeon.js';
 import { computeAttrs } from '../systems/character.js';
 import { cultivationRate, stageProgress, breakthroughInfo } from '../systems/cultivation.js';
 import { carryCapacity, msToNextRift } from '../systems/rift.js';
@@ -31,7 +32,7 @@ import { combatPower } from '../systems/combat.js';
 import { totalIncomePerHour } from '../systems/modern.js';
 import { rentPerHour } from '../systems/estate.js';
 import { pendingTale, resolveTale } from '../systems/tales.js';
-import { ascend, ascensionPreview, chooseFate, FATES } from '../systems/reincarnation.js';
+import { ascend, ascensionPreview, chooseFate, FATES, canAscend, fateChoicePending, ASCENSION_RESET, ASCENSION_KEEP } from '../systems/reincarnation.js';
 import { rpPerHour } from '../systems/research.js';
 import { getPath } from '../data/paths.js';
 import { stageInfo } from '../data/realms.js';
@@ -179,8 +180,9 @@ function liveValue(key) {
       const cap = carryCapacity(s);
       return `载重 ${fmtKg(carryWeight(s))} / ${cap} kg`;
     }
-    case 'staminaBar': return s.player.stamina / 100;
-    case 'staminaText': return `${Math.floor(s.player.stamina)} / 100`;
+    case 'staminaBar': return s.player.stamina / staminaMax(s);
+    case 'staminaText': return `${Math.floor(s.player.stamina)} / ${staminaMax(s)}`;
+    case 'staminaRecovery': return staminaEta(s, true) > 0 ? `${fmtDuration(staminaEta(s, true))} 后恢复 1 点 · ${fmtDuration(staminaEta(s))} 后回满（世界时间）` : '体力已满';
     default: return undefined;
   }
 }
@@ -222,14 +224,15 @@ export function openTaleModal(tale) {
 
 export function openAscendModal() {
   const s = stateRef;
+  if (!canAscend(s)) { showToast('请先在修炼页圆满修为并渡过雷劫。', 'warn'); return; }
   const preview = ascensionPreview(s);
   domModal({
     title: '飞升轮回',
     subtitle: '九重雷劫已过。两个世界同时在你脚下。',
     sticky: true,
     body: h('div', null,
-      h('p.t-sm', { text: '飞升会重置本世的境界、货币、背包、装备、功法、灵田、牧场、灵兽、副本进度与地产。' }),
-      h('p.t-sm.t-dim.mt-2', { text: '保留：轮回点、境界图鉴、永久天赋、道侣缘分、灵科研究。' }),
+      h('p.t-sm', { text: `重置：${ASCENSION_RESET}。` }),
+      h('p.t-sm.t-dim.mt-2', { text: `保留：${ASCENSION_KEEP}。` }),
       h('hr.hr'),
       ...preview.parts.map((p) => h('div.flex-between', { style: 'padding:3px 0' },
         h('span.t-sm.t-dim', { text: p.label }),
@@ -248,7 +251,7 @@ export function openAscendModal() {
         onClick: () => {
           const r = ascend(s);
           if (!r.ok) { showToast(r.reason, 'warn'); return; }
-          ui.view = 'cultivation';
+          ui.view = 'home';
           scheduleRender();
           openFateModal();
         },
@@ -259,12 +262,13 @@ export function openAscendModal() {
 
 export function openFateModal() {
   const s = stateRef;
+  if (!fateChoicePending(s)) return;
   domModal({
     title: '天命',
     subtitle: '每一次轮回，都换一种活法。',
     sticky: true,
     body: h('div', null,
-      h('p.t-sm.t-dim.mb-3', { text: '天命永久生效，只能选一个。它决定你下一轮最舒服的路线。' }),
+      h('p.t-sm.t-dim.mb-3', { text: '天命本世生效，开局资源只领取一次；下一次轮回可以重选。' }),
       ...FATES.map((f) => h('div.rowitem', null,
         h('div.rowitem-main', null,
           h('div.rowitem-title', null, h('span.rowitem-name.t-serif', { text: `${f.icon} · ${f.name}` })),
@@ -275,7 +279,8 @@ export function openFateModal() {
           h('button.btn.btn-sm.btn-solid', {
             text: '择此天命',
             onclick: () => {
-              chooseFate(s, f.id);
+              const r = chooseFate(s, f.id);
+              if (!r.ok) { showToast(r.reason, 'warn'); return; }
               closeOverlay();
               scheduleRender();
             },
@@ -408,6 +413,10 @@ export function initApp(state, offlineReport = null) {
   on(EV.TICK, () => {
     refreshLive(liveValue);
     if (isCrossing()) return;
+    if (fateChoicePending(stateRef)) {
+      if (!document.getElementById('overlay-root').childElementCount) openFateModal();
+      return;
+    }
     const tale = pendingTale(stateRef);
     if (tale && !document.getElementById('overlay-root').childElementCount && stateRef.tales.pending?.id !== lastTaleId) {
       lastTaleId = stateRef.tales.pending?.id;
@@ -421,6 +430,10 @@ export function initApp(state, offlineReport = null) {
   on(EV.BATTLE, scheduleRender);
   on(EV.BREAKTHROUGH, scheduleRender);
   on(EV.OVERLAY, (p) => {
+    if (fateChoicePending(stateRef)) {
+      if (!isCrossing() && !document.getElementById('overlay-root').childElementCount) openFateModal();
+      return;
+    }
     if (p && p.kind === 'tale' && p.tale && !isCrossing() && !document.getElementById('overlay-root').childElementCount) {
       lastTaleId = p.tale.id;
       openTaleModal(p.tale);
