@@ -3,117 +3,73 @@
  */
 
 import { h, panel, panelFlush, showToast } from '../dom.js';
-import { ALCHEMY_RECIPES, FORGE_RECIPES } from '../../data/recipes.js';
-import { MATERIALS, CONSUMABLE_MAP, MATERIAL_MAP, getItem } from '../../data/items.js';
-import { SLOTS, TIER_MAP, TIERS } from '../../data/equipment.js';
-import { recipeStatus as alchemyStatus, craft, alchemyRate, isFirstCraft, sideEffectRate } from '../../systems/alchemy.js';
+import { ALCHEMY_RECIPES, ALCHEMY_MAP, FORGE_RECIPES } from '../../data/recipes.js';
+import { MATERIALS, getItem } from '../../data/items.js';
+import { SLOTS } from '../../data/equipment.js';
+import { recipeStatus as alchemyStatus, craft, alchemyPlan, setAlchemyPlan, AUTO_ALCHEMY_INTERVAL } from '../../systems/alchemy.js';
 import { recipeStatus as forgeStatus, forge, forgeRate, forgeScale } from '../../systems/forging.js';
 import { computeAttrs } from '../../systems/character.js';
 import { countOf } from '../../systems/inventory.js';
 import { researchEffects } from '../../data/research.js';
-import { fmtInt, fmtPct } from '../../core/util.js';
+import { AUXILIARIES, PILL_QUALITY, pillDescription } from '../../data/alchemy.js';
+import { productionGoal, reserveField } from './production.js';
+import { fmtInt, fmtPct, fmtDuration } from '../../core/util.js';
 
 let forgeSlot = 'weapon';
 
-/** 药性分析仪（GDD 5.2）：首次炼制某种丹药时显示预计成功率、主要属性、副作用概率 */
-function firstCraftModal(state, ctx, recipe, onConfirm) {
-  const rate = alchemyRate(state, recipe);
-  const tox = sideEffectRate(state);
-  const out = CONSUMABLE_MAP[recipe.out];
-
-  const effectText = (() => {
-    const e = out?.effect;
-    if (!e) return '—';
-    if (e.type === 'breakthrough') return `突破成功率 +${fmtPct(e.add, 0)}`;
-    if (e.type === 'stamina') return `恢复体力 ${e.add}`;
-    if (e.type === 'cultivation_boost') return `${(e.durationMs / 3600000).toFixed(0)} 小时内修炼速度 +${fmtPct(e.add, 0)}`;
-    if (e.type === 'pity') return `直接推进 ${e.add} 次突破保底`;
-    return e.type;
-  })();
-
-  ctx.modal({
-    title: '药性分析仪',
-    subtitle: `首次炼制「${recipe.name}」`,
+function craftConfirmation(state, ctx, id, auxId, requested, notice = '') {
+  const st = alchemyStatus(state, id, auxId);
+  if (!st.ok) { showToast(st.reason, 'warn'); ctx.rerender(); return; }
+  const n = Math.min(requested, st.maxAttempts);
+  const signature = JSON.stringify([st.cost, st.rate, st.tox, st.recipe.qty, st.mats.map(m => [m.id, m.need]), n]);
+  ctx.modal({ title: '开炉确认', subtitle: `${st.recipe.name} · ${st.aux.name} · 最多 ${n} 炉`,
     body: h('div', null,
-      h('p.t-xs.t-dim.mb-2', { text: '灵科「分析丹毒」已接入。先看清数据再开炉——这是现代仪器第一次真正帮上修仙的忙。' }),
-      h('dl', { style: 'margin:0' },
-        h('dl.kv', null, h('dt', { text: '预计成功率' }), h('dd.t-num.t-strong', { text: fmtPct(rate, 1) })),
-        h('dl.kv', null, h('dt', { text: '主要属性' }), h('dd', { text: effectText })),
-        h('dl.kv', null, h('dt', { text: '单次产出' }), h('dd', { text: `${out?.name || recipe.out} ×${recipe.qty}` })),
-        h('dl.kv', null, h('dt', { text: '失败副作用概率' }), h('dd.t-num', { text: fmtPct(tox, 0) })),
-        h('dl.kv', null, h('dt', { text: '副作用内容' }), h('dd', { text: '额外损失一半灵石成本' })),
-        h('dl.kv', null, h('dt', { text: '单次灵石成本' }), h('dd.t-num', { text: fmtInt(recipe.cost) })),
-      ),
-      h('p.t-xs.t-dimmer.mt-3', { text: '提示：丹修道途与「药性数据库」研究都能提高成功率。' }),
-    ),
-    actions: [
-      { label: '再想想', onClick: () => {} },
-      { label: '开炉', primary: true, onClick: onConfirm },
-    ],
+      notice ? h('p.t-xs.t-rise.mb-2', { text: notice }) : null,
+      h('p.t-sm.mb-3', { text: `每炉成功率 ${fmtPct(st.rate, 1)}，成功产出 ${st.recipe.qty} 枚。` }),
+      st.mats.map(m => h('dl.kv', null, h('dt', { text: m.name }), h('dd', { text: `${m.need * n}（现有 ${fmtInt(m.have)}）` }))),
+      h('dl.kv', null, h('dt', { text: '基础灵石支出' }), h('dd', { text: `${fmtInt(st.cost * n)}（每炉 ${fmtInt(st.cost)}）` })),
+      h('p.t-xs.t-dim.mt-3', { text: `失败会消耗本炉全部材料；失败后 ${fmtPct(st.tox, 1)} 概率反噬，额外损失本炉一半灵石成本（${fmtInt(Math.round(st.cost * .5))}）。资金不足会提前结束。` }),
+      h('p.t-xs.t-dim.mt-2', { text: `成功后品质：普通 ${fmtPct(1 - st.aux.fine - st.aux.rare, 0)} / 优质 ${fmtPct(st.aux.fine, 0)} / 稀有 ${fmtPct(st.aux.rare, 0)}。` }),
+      Object.keys(PILL_QUALITY).map(q => h('p.t-xs.mt-2', { text: `${PILL_QUALITY[q].name}：${pillDescription(st.recipe.out, q)}` }))),
+    actions: [{ label: '返回配置' }, { label: '确认开炉', primary: true, keepOpen: true, onClick: () => {
+      const current = alchemyStatus(state, id, auxId);
+      if (!current.ok) { showToast(current.reason, 'warn'); return; }
+      const nowSignature = JSON.stringify([current.cost, current.rate, current.tox, current.recipe.qty, current.mats.map(m => [m.id, m.need]), Math.min(requested, current.maxAttempts)]);
+      if (signature !== nowSignature) { ctx.closeOverlay(); craftConfirmation(state, ctx, id, auxId, requested, '材料、可炼炉数或成功率已变化，请再次确认。'); return; }
+      const result = craft(state, id, n, { auxId });
+      if (!result.ok) { showToast(result.reason, 'warn'); return; }
+      ctx.closeOverlay(); ctx.rerender();
+    } }],
   });
 }
-
 function alchemySection(state, ctx) {
-  const attrs = computeAttrs(state);
-  const fx = researchEffects(state);
-  const hasAnalyzer = (fx.alchemyTox ?? 1) < 1;
-
-  const doCraft = (recipe, n) => {
-    const run = () => {
-      const res = craft(state, recipe.id, n);
-      if (!res.ok) showToast(res.reason, 'warn');
-      ctx.rerender();
-    };
-    if (hasAnalyzer && isFirstCraft(state, recipe.id)) {
-      firstCraftModal(state, ctx, recipe, () => { ctx.closeOverlay(); run(); });
-      return;
-    }
-    run();
-  };
-
-  const rows = ALCHEMY_RECIPES.map((r) => {
-    const st = alchemyStatus(state, r.id);
-    const locked = state.player.stage < r.unlockStage;
-    return h('div.rowitem', null,
-      h('div.rowitem-main', null,
-        h('div.rowitem-title', null,
-          h('span.rowitem-name', { text: r.name }),
-          h('span.tag', { class: 'q-rare', text: CONSUMABLE_MAP[r.out]?.name || r.out }),
-          locked ? h('span.tag', { text: '境界不足' }) : null,
-          h('span.tag', { text: `成功率 ${fmtPct(alchemyRate(state, r), 0)}` }),
-          hasAnalyzer && !locked && isFirstCraft(state, r.id) ? h('span.tag.tag-outline-ink', { text: '可分析' }) : null,
-        ),
-        h('div.rowitem-meta', null,
-          ...Object.entries(r.mats).map(([mid, qty]) => h('span', {
-            class: countOf(state, mid) >= qty ? '' : 't-rise',
-            text: `${MATERIAL_MAP[mid]?.name || mid} ${countOf(state, mid)}/${qty}　`,
-          })),
-          h('span.t-dimmer', { text: `灵石 ${fmtInt(r.cost)}` }),
-        ),
-        h('div.t-xs.t-dimmer', { text: r.desc }),
-      ),
-      h('div.rowitem-act', null,
-        h('button.btn.btn-sm', {
-          text: '炼 1',
-          disabled: locked || !st.ok,
-          onclick: () => doCraft(r, 1),
-        }),
-        h('button.btn.btn-sm.btn-solid', {
-          text: '炼 5',
-          disabled: locked || !st.matOk || !st.stoneOk,
-          onclick: () => doCraft(r, 5),
-        }),
-      ),
-    );
-  });
-
-  return panelFlush('炼丹', `丹修加成 +${fmtPct(attrs.alchemy, 0)}　·　药性数据库 +${fmtPct(fx.alchemySuccess, 0)}`,
-    ...rows,
-    fx.autoAlchemy
-      ? h('div', { style: 'padding:10px 16px;border-top:1px solid var(--line)' },
-        h('span.t-xs.t-dim', { text: '灵科「自动炼丹机」已启用：每次界潮刷新时自动炼制一批。' }))
-      : null,
-  );
+  const fx = researchEffects(state), attrs = computeAttrs(state), st = alchemyPlan(state);
+  const id = state.crafting.selectedRecipe || 'huiyuan', auxId = state.crafting.selectedAux || 'plain';
+  const change = options => { const r = setAlchemyPlan(state, options); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); };
+  return panel('炼丹配置', `丹修 +${fmtPct(attrs.alchemy, 0)} · 药性数据库 +${fmtPct(fx.alchemySuccess, 0)}`,
+    h('p.t-sm.mb-3', { text: `${st.recipe?.name || '丹方不可用'}：${st.recipe?.desc || st.reason}` }),
+    h('div.production-grid.mb-3', null, AUXILIARIES.map(a => h('button.btn.production-choice', {
+      class: auxId === a.id ? 'btn-solid' : '', disabled: state.player.stage < a.stage, 'aria-label': `辅材方案${a.name}`,
+      onclick: () => change({ auxId: a.id }),
+    }, h('span.t-strong', { text: `${a.name}${state.player.stage < a.stage ? ' · 尚未解锁' : ''}` }),
+      h('span.t-xs', { text: a.desc }), h('span.t-xs', { text: `辅材：${Object.entries(a.mats).map(([id, n]) => `${getItem(id)?.name} ×${n}`).join('、') || '无'} · 加费 ${a.cost} 灵石` })))),
+    st.recipe ? h('div', null,
+      h('div.btn-row.mb-2', null, h('span.tag.tag-ink', { text: `成功率 ${fmtPct(st.rate, 1)}` }), h('span.tag', { text: `每炉 ${fmtInt(st.cost)} 灵石` }), h('span.tag', { text: `最多可开 ${st.maxAttempts} 炉（未含反噬）` })),
+      h('p.t-xs.t-dim', { text: `成功产出 ${st.recipe.qty} 枚 · 失败后反噬概率 ${fmtPct(st.tox, 1)} · 成功后优质 ${fmtPct(st.aux.fine, 0)} / 稀有 ${fmtPct(st.aux.rare, 0)}` }),
+      h('p.t-xs.t-dimmer.mt-2', { text: pillDescription(st.recipe.out) }),
+      h('p.t-xs.t-dimmer.mt-2', { text: '主辅材品质不改变开炉参数；优先消耗普通材料，普通材料用完后才使用更高品质。' }),
+      h('div.btn-row.mt-3', null,
+        h('button.btn.btn-sm', { text: '准备 1 炉', disabled: !st.ok, onclick: () => craftConfirmation(state, ctx, id, auxId, 1) }),
+        h('button.btn.btn-sm.btn-solid', { text: '准备最多 5 炉', disabled: !st.ok, onclick: () => craftConfirmation(state, ctx, id, auxId, 5) })),
+      !st.ok ? h('p.t-xs.t-rise.mt-2', { text: st.reason }) : null) : null,
+    h('div.production-controls.mt-3', null,
+      h('button.btn.btn-sm', { text: `自动炼丹：${state.crafting.autoAlchemy ? '开' : '关'}`, disabled: !fx.autoAlchemy, onclick: () => change({ on: !state.crafting.autoAlchemy }) }),
+      reserveField(state.crafting.reserveStone || 0, '炼丹保留灵石', reserveStone => setAlchemyPlan(state, { reserveStone })),
+      h('p.t-xs.t-dim', { live: 'alchemyAutoStatus' }),
+      h('p.t-xs.t-dimmer', { text: `研究解锁后需手动开启；每 ${fmtDuration(AUTO_ALCHEMY_INTERVAL)} 世界时间最多开 3 炉。只用本页丹方和辅材，缺料或触及预算线则等待。反噬也不突破保留线；手动开炉不受此线限制。墨瑶的每日代炼独立于机器，同样遵守本页方案与预算。` })),
+    h('details.mt-3', null, h('summary.t-sm', { text: '全部丹方与解锁' }),
+      ALCHEMY_RECIPES.map(r => h('div.rowitem', null, h('div.rowitem-main', null, h('div.t-sm', { text: r.name }), h('div.t-xs.t-dim', { text: r.desc })), h('button.btn.btn-sm', { text: state.player.stage < r.unlockStage ? '境界不足' : '选择丹方', disabled: state.player.stage < r.unlockStage, onclick: () => change({ recipeId: r.id }) })))),
+    state.crafting.history?.length ? h('details.mt-3', null, h('summary.t-sm', { text: '最近开炉记录（最多 10 批）' }), state.crafting.history.slice().reverse().map(r => h('p.t-xs.mt-2', { text: `${ALCHEMY_MAP[r.recipeId]?.name} · ${AUXILIARIES.find(a => a.id === r.auxId)?.name}：${r.attempts} 炉 / 成丹 ${r.made} / 失败 ${r.failed} / 反噬 ${fmtInt(r.extraLoss)} 灵石${Object.entries(r.grades).map(([q, n]) => ` · ${PILL_QUALITY[q]?.name} ${n}`).join('')}` }))) : null);
 }
 
 function forgeSection(state, ctx) {
@@ -142,7 +98,7 @@ function forgeSection(state, ctx) {
         h('div.rowitem-meta', null,
           h('span', {
             class: countOf(state, r.mat) >= r.qty ? '' : 't-rise',
-            text: `${st.matName} ${countOf(state, r.mat)}/${r.qty}　`,
+            text: `${st.matName || getItem(r.mat)?.name || r.mat} ${countOf(state, r.mat)}/${r.qty}　`,
           }),
           h('span.t-dimmer', { text: `灵石 ${fmtInt(r.cost)}` }),
         ),
@@ -194,6 +150,7 @@ function materialSection(state) {
 
 export function renderCraft(state, ctx) {
   return h('div.flex-col.gap-4', null,
+    productionGoal(state, ctx, { showLink: false }),
     alchemySection(state, ctx),
     forgeSection(state, ctx),
     materialSection(state),

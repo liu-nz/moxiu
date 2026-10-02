@@ -311,3 +311,14 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--jade);outline
   .market-row .rowitem-act { width:100%; flex-wrap:wrap; justify-content:flex-end; }
   .market-row .rowitem-price { margin-right:auto; }
 }
+
+/* 洞府生产：每块田有独立续种计划，控制项在手机上自然换行。 */
+.production-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:10px; }
+.production-tile { border:1px solid var(--line); padding:12px; min-width:0; }
+.production-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.production-field select,.production-field input,.production-tile select { width:100%; min-width:0; max-width:100%; padding:8px; border:1px solid var(--line); background:var(--bg-raised); color:var(--ink); font:inherit; }
+.production-controls { display:flex; flex-wrap:wrap; align-items:end; gap:10px; padding:12px; border:1px solid var(--line); }
+.production-controls .production-field { flex:1 1 150px; }
+.production-controls p { width:100%; }
+.production-materials { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:10px; }
+.production-choice { text-align:left; white-space:normal; height:auto; padding:12px; display:flex; flex-direction:column; gap:5px; }

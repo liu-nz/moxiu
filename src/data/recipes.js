@@ -19,7 +19,7 @@ export const ALCHEMY_RECIPES = [
     id: 'juqi', name: '聚气丹', out: 'juqi', qty: 2,
     cost: 90, success: 0.72, unlockStage: 0,
     mats: { huangjing: 3, lingjidan: 1 },
-    desc: '低阶修士的日用丹药。自炼自卖，比倒卖划算。',
+    desc: '跨界贸易用丹药，不可服用。售价随市场与品质变化。',
   },
   {
     id: 'ningshen', name: '凝神丹', out: 'ningshendan', qty: 1,
@@ -31,13 +31,13 @@ export const ALCHEMY_RECIPES = [
     id: 'zhuji', name: '筑基丹', out: 'zhujidan', qty: 1,
     cost: 600, success: 0.55, unlockStage: 10,
     mats: { bainian: 2, huangjing: 5, lurong: 1 },
-    desc: '突破成功率 +20%。坊市里卖 300 灵石，自己炼省一半。',
+    desc: '下次突破成功率 +20%。可炼制不同品质；原方成本高于市场购入价。',
   },
   {
     id: 'lingyuan', name: '灵元丹', out: 'lingyuandan', qty: 1,
     cost: 2400, success: 0.45, unlockStage: 14,
     mats: { binglian: 1, bainian: 3, lurong: 2 },
-    desc: '两小时内修炼速度 +200%。冰莲化掉之前必须炼完。',
+    desc: '两小时内修炼速度 +200%。同类修炼丹药替换，不叠加。',
   },
   {
     id: 'dujie', name: '渡劫丹', out: 'dujiedan', qty: 1,

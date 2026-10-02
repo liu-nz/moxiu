@@ -36,7 +36,7 @@ export function runDailyDuties(state, days = 1) {
     /* 墨瑶：自动炼丹 */
     if (hasDuty(state, 'moyao')) {
       const n = dutyMultiplier(state, 'moyao');
-      const r = autoCraft(state, 2 * n);
+      const r = autoCraft(state, 2 * n, { companion: true });
       if (r.made) report.push(`墨瑶炼成丹药 ×${r.made}`);
     }
 

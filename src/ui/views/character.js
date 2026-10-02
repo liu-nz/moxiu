@@ -15,6 +15,7 @@ import {
 import { ITEM_MAP, CONSUMABLE_MAP, CATEGORIES, getItem } from '../../data/items.js';
 import { QUALITY_MAP } from '../../data/dungeons.js';
 import { researchEffects } from '../../data/research.js';
+import { pillDescription } from '../../data/alchemy.js';
 import { useConsumable } from '../../systems/gear.js';
 import { skillUpgradeCost } from '../../data/skills.js';
 import {
@@ -395,13 +396,13 @@ export function renderCharacter(state, ctx) {
         h('div.rowitem-title', null,
           h('span.rowitem-name', { text: it.name }),
           isConsumable ? h('span.tag', { class: 'q-rare', text: '丹药' }) : null,
-          !isConsumable && e.quality !== 'common' ? h('span.tag', { class: q.cls, text: q.name }) : null,
+          e.quality !== 'common' ? h('span.tag', { class: q.cls, text: q.name }) : null,
           h('span.tag', { text: `×${e.qty}` }),
         ),
-        h('div.rowitem-meta', { text: `${it.weight} kg/件　共 ${(it.weight * e.qty).toFixed(2)} kg` }),
+        h('div.rowitem-meta', { text: isConsumable ? pillDescription(e.itemId, e.quality) : `${it.weight} kg/件　共 ${(it.weight * e.qty).toFixed(2)} kg` }),
       ),
       h('div.rowitem-act', null,
-        isConsumable ? h('button.btn.btn-sm.btn-solid', { text: '使用', onclick: () => { const r = useConsumable(state, e.itemId); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
+        isConsumable ? h('button.btn.btn-sm.btn-solid', { text: '使用', onclick: () => { const r = useConsumable(state, e.itemId, e.uid); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
         it.equip ? h('button.btn.btn-sm', { text: '随身带', onclick: () => { const r = equipTech(state, e.itemId); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
       ),
     );
