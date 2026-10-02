@@ -16,7 +16,7 @@ export const CITY_PROJECTS = [
     desc: '在整座城市的地下埋一圈聚灵阵。灵气浓度上来之后，你在两界任何一侧修炼都更快。',
     effectText: '修炼速度 +15%（全局）',
     effect: { cultSpeed: 0.15 },
-    cost: { stone: 300000, cny: 800000, mats: { xuanjing: 5, huojing: 2 } },
+    cost: { stone: 100000, cny: 150000, mats: { xuanjing: 3, huojing: 2 } },
   },
   {
     research: ['alloy'],
@@ -25,16 +25,16 @@ export const CITY_PROJECTS = [
     desc: '把一片城区整体灵化：阵法供电、灵材结构、灵气循环。租金自然水涨船高。',
     effectText: '地产租金 +50%',
     effect: { rentMul: 0.50 },
-    cost: { stone: 1200000, cny: 5000000, mats: { xuanjing: 8, huojing: 6 } },
+    cost: { stone: 250000, cny: 300000, mats: { xuanjing: 4, huojing: 3 } },
   },
   {
     research: ['battery'],
     id: 'powergrid', name: '灵能电网', accent: '能',
     stage: 27,
     desc: '把灵能电池并进城市电网。第一次合闸的时候，半个城市的灯都亮了一瞬。',
-    effectText: '工资与商业被动收入 +25%',
+    effectText: '工资、商业被动收入与公司订单回款 +25%',
     effect: { modernIncome: 0.25 },
-    cost: { stone: 2500000, cny: 12000000, mats: { huojing: 10, xingchen: 3 } },
+    cost: { stone: 400000, cny: 450000, mats: { huojing: 6, xingchen: 2 } },
   },
   {
     prerequisites: ['powergrid'],
@@ -43,7 +43,7 @@ export const CITY_PROJECTS = [
     desc: '城市之间架传送阵。货运通道扩容，单次跨界载重增加，店铺能更快处理货物。',
     effectText: '跨界载重 +10 kg，店铺吞吐翻倍',
     effect: { gateCarry: 10, shopThroughput: 1.0 },
-    cost: { stone: 9000000, cny: 40000000, mats: { xingchen: 6, xuanjing: 12 } },
+    cost: { stone: 600000, cny: 800000, mats: { xingchen: 4, xuanjing: 8 } },
   },
   {
     research: ['branchpredict'],
@@ -52,7 +52,7 @@ export const CITY_PROJECTS = [
     desc: '把天机阁的铜盘放大一万倍，架在城市最高处。它开始推演一些没人问过的问题。',
     effectText: '奇闻触发 +30%，道途可随时免费重选',
     effect: { taleRate: 0.30, freePathSwitch: true },
-    cost: { stone: 80000000, cny: 300000000, mats: { xingchen: 12, xuanjing: 20 } },
+    cost: { stone: 1200000, cny: 2000000, mats: { xingchen: 6, xuanjing: 8 } },
   },
   {
     prerequisites: ['spiritvein'],
@@ -61,7 +61,7 @@ export const CITY_PROJECTS = [
     desc: '按飞升台的图纸，在现代都市的地基里复刻一座基座。你不太确定这算不算作弊。',
     effectText: '飞升轮回点 +25%',
     effect: { reincarnationBonus: 0.25 },
-    cost: { stone: 600000000, cny: 2000000000, mats: { xingchen: 24, xuanjing: 40 } },
+    cost: { stone: 3000000, cny: 8000000, mats: { xingchen: 8, xuanjing: 12 } },
   },
 ];
 

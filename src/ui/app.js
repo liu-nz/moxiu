@@ -31,7 +31,7 @@ import { carryWeight } from '../systems/inventory.js';
 import { combatPower } from '../systems/combat.js';
 import { totalIncomePerHour } from '../systems/modern.js';
 import { rentPerHour } from '../systems/estate.js';
-import { pendingTale, resolveTale } from '../systems/tales.js';
+import { pendingTale, resolveTale, taleChoiceStatus } from '../systems/tales.js';
 import { ascend, ascensionPreview, chooseFate, FATES, canAscend, fateChoicePending, ASCENSION_RESET, ASCENSION_KEEP } from '../systems/reincarnation.js';
 import { rpPerHour } from '../systems/research.js';
 import { getPath } from '../data/paths.js';
@@ -98,6 +98,7 @@ const ctx = {
   offlineReport: null,
   ascendModal: () => openAscendModal(),
   fateModal: () => openFateModal(),
+  taleModal: () => openTaleModal(pendingTale(stateRef)),
 };
 
 export function scheduleRender() {
@@ -226,9 +227,11 @@ export function openTaleModal(tale) {
     h('p.t-sm', { text: tale.text }),
     h('div.mt-4', null, tale.choices.map((c, i) => h('button.btn.btn-block.mt-2', {
       style: 'text-align:left;white-space:normal;line-height:1.6',
-      text: c.label,
+      text: c.label + (taleChoiceStatus(s, c).ok ? '' : ' · 资金不足'),
+      disabled: !taleChoiceStatus(s, c).ok,
       onclick: () => {
         const res = resolveTale(s, i);
+        if (!res.ok) { showToast(res.reason, 'warn'); return; }
         closeOverlay();
         if (res.ok) {
           domModal({
@@ -247,7 +250,7 @@ export function openTaleModal(tale) {
     subtitle: s.side === SIDE.CULTIVATION ? '修仙界' : '现代都市',
     sticky: true,
     body,
-    actions: [],
+    actions: [{ label: '稍后处理' }],
   });
 }
 

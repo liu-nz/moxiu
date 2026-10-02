@@ -21,6 +21,7 @@ export const WORLD_EVENTS = [
     breakthroughPenalty: 0,
   },
   {
+    farmYield: .5,
     id: 'herb_harvest', name: '灵植丰收', weight: 20,
     desc: '今日灵草产量 +50%，但售价下跌。',
     price: { herb: 0.6 },

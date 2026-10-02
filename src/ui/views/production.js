@@ -13,7 +13,7 @@ export function productionGoal(state, ctx, { showLink = true } = {}) {
       h('span.t-sm', { class: m.have >= m.need ? 't-dim' : 't-rise', text: `${m.name} ${fmtInt(m.have)} / ${m.need}${m.have < m.need ? ` · 缺 ${m.need - m.have}` : ' · 已备齐'}` }),
       h('div.t-xs.t-dimmer', { text: m.source })))) : h('p.t-xs', { text: st.reason }),
     showLink ? h('div.btn-row.mt-3', null, h('button.btn.btn-sm', { text: '前往炼丹配置', onclick: () => ctx.navigate('craft') })) : null,
-    h('p.t-xs.t-dimmer.mt-2', { text: '备料包含当前辅材方案。选择目标只作提示；自动补种和养殖仍由你安排。' }),
+    h('p.t-xs.t-dimmer.mt-2', { text: '备料包含当前辅材方案与修仙仓库原料。选择目标只作提示；自动补种和养殖仍由你安排。' }),
   );
 }
 export function reserveField(value, label, save) {

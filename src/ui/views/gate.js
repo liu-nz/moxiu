@@ -8,6 +8,8 @@ import { hotList, demandArrow, quotePortfolio } from '../../systems/market.js';
 import { computeAttrs } from '../../systems/character.js';
 import { fmtInt, fmtKg, fmtDuration } from '../../core/util.js';
 
+import { cargoPanel } from './cargo.js';
+
 let crossing = false;
 export function isCrossing() { return crossing; }
 export function startCrossing(s, ctx, destination) {
@@ -56,7 +58,7 @@ export function renderGate(s,ctx) {
   );
   return h('div.flex-col.gap-4',null,
     h('section.gate-intro',null,h('div.eyebrow',{text:`界门 LV.${s.rift.gateLevel}`}),h('h1',{text:`${SIDE_NAME[s.side]} → ${SIDE_NAME[to]}`}),h('p.t-sm.t-dim.mt-2',{text:'先看行情，再确认行囊。每次穿越，都是一次选择。'})),
-    bag,market,
+    bag,cargoPanel(s,ctx),market,
     panel('确认穿越',`该方向剩余 ${remain} 次`,
       h('p.t-sm',{live:'riftCountdown',text:`下次刷新 ${fmtDuration(msToNextRift(s.world.clockMs))}`}),
       h('p.t-xs.t-dim.mt-2',{text:`每日双向各 ${perDirection(s)} 次，每方向最多累计 ${bankCap(s)} 次。标准模式每日 05:00（UTC+8）统一刷新。`}),

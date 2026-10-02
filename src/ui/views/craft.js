@@ -6,7 +6,7 @@ import { h, panel, panelFlush, showToast } from '../dom.js';
 import { ALCHEMY_RECIPES, ALCHEMY_MAP, FORGE_RECIPES } from '../../data/recipes.js';
 import { MATERIALS, getItem } from '../../data/items.js';
 import { SLOTS } from '../../data/equipment.js';
-import { recipeStatus as alchemyStatus, craft, alchemyPlan, setAlchemyPlan, AUTO_ALCHEMY_INTERVAL } from '../../systems/alchemy.js';
+import { recipeStatus as alchemyStatus, craft, alchemyPlan, setAlchemyPlan, AUTO_ALCHEMY_INTERVAL, alchemyEconomics } from '../../systems/alchemy.js';
 import { recipeStatus as forgeStatus, forge, forgeRate, forgeScale } from '../../systems/forging.js';
 import { computeAttrs } from '../../systems/character.js';
 import { countOf } from '../../systems/inventory.js';
@@ -62,6 +62,9 @@ function alchemySection(state, ctx) {
         h('button.btn.btn-sm', { text: '准备 1 炉', disabled: !st.ok, onclick: () => craftConfirmation(state, ctx, id, auxId, 1) }),
         h('button.btn.btn-sm.btn-solid', { text: '准备最多 5 炉', disabled: !st.ok, onclick: () => craftConfirmation(state, ctx, id, auxId, 5) })),
       !st.ok ? h('p.t-xs.t-rise.mt-2', { text: st.reason }) : null) : null,
+    st.recipe ? h('details.mt-3', null, h('summary.t-sm',{text:'辅材长期产出比较'}),
+      h('p.t-xs.t-dim.mt-2',{text:'以下是大量开炉的数学期望，不保证单次结果。灵石成本包含平均反噬，不包括材料价值；主辅材仍按上方实际数量消耗。品质强度是丹药基础强度，具体丹药按实际效果取整。'}),
+      AUXILIARIES.map(aux=>{const e=alchemyEconomics(state,id,aux.id);return h('p.t-xs.mt-2',{text:`${aux.name}${e.locked?' · 尚未解锁':''}：平均每炉${e.expectedPills.toFixed(2)}枚 · 每成丹约${e.stonePerPill.toFixed(1)}灵石 · 成功后平均基础强度${(e.meanPotency*100).toFixed(1)}% · 每100炉约${e.rarePer100.toFixed(1)}炉出稀有`});})) : null,
     h('div.production-controls.mt-3', null,
       h('button.btn.btn-sm', { text: `自动炼丹：${state.crafting.autoAlchemy ? '开' : '关'}`, disabled: !fx.autoAlchemy, onclick: () => change({ on: !state.crafting.autoAlchemy }) }),
       reserveField(state.crafting.reserveStone || 0, '炼丹保留灵石', reserveStone => setAlchemyPlan(state, { reserveStone })),

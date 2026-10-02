@@ -4,9 +4,10 @@
  */
 
 import { CROP_MAP, PLOTS, cropYield, unlockedCrops } from '../data/crops.js';
+import { getEvent } from '../data/worldEvents.js';
 import { researchEffects } from '../data/research.js';
 import { BEAST_MAP } from '../data/beasts.js';
-import { addItem } from './inventory.js';
+import { addProduced } from './cargo.js';
 import { guildMods, sectMods } from './character.js';
 import { countHarvest } from './daily.js';
 import { logGood, logWarn, toast } from './log.js';import { updateTutorial } from './tutorial.js';
@@ -30,7 +31,7 @@ export function ensurePlots(state) {
 /** 灵田产量加成：灵科「自动灵田」+ 道盟丹鼎会 + 宗门丹霞谷 */
 export function farmBonus(state) {
   const fx = researchEffects(state);
-  let b = fx.farmYield || 0;
+  let b = (fx.farmYield || 0) + (getEvent(state.market.eventId).farmYield || 0);
   b += guildMods(state).farmYield || 0;
   b += sectMods(state).farmYield || 0;
   return b;
@@ -92,12 +93,12 @@ export function harvest(state, index, silent = false) {
   const crop = CROP_MAP[plot.cropId];
   if (!crop) return { ok: false, reason: '作物数据不可用。' };
   const qty = cropYield(crop, farmBonus(state));
-  addItem(state, crop.itemId, qty, 'common');
+  const placement = addProduced(state, crop.itemId, qty, 'common');
   state.farm.plots[index] = null;
   countHarvest(state, 1);
   if (!silent) logGood(state, `收获「${crop.name}」×${qty}。`);
   emit(EV.STATE);
-  return { ok: true, qty, crop };
+  return { ok: true, qty, crop, ...placement };
 }
 
 export function harvestAll(state) {

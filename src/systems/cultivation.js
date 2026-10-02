@@ -43,7 +43,12 @@ export function advanceIfReady(state) {
 
     const isTop = info.stageIndex === info.realm.stages.length - 1;
     if (isTop) {
-      state.player.cultivation = need;   // 封顶，等待突破
+      state.player.cultivation = need;
+      const bt = nextBreakthrough(state.player.stage);
+      if (state.player.autoBreakthrough && !bt?.ascension && !bt?.locked) {
+        const result = attemptBreakthrough(state);
+        if (result.success) { advanced = true; continue; }
+      }
       break;
     }
     state.player.cultivation -= need;
@@ -106,6 +111,7 @@ export function attemptBreakthrough(state) {
   if (!info.available) return { ok: false, reason: info.reason };
   if (info.locked) return { ok: false, reason: info.reason, locked: true };
   if (!info.full) return { ok: false, reason: info.reason };
+  state.stats.breakthroughAttempts = (state.stats.breakthroughAttempts || 0) + 1;
 
   const success = info.pity || Math.random() < info.chance;
 
@@ -176,3 +182,15 @@ export function stageProgress(state) {
 }
 
 export { stageInfo, needOf, cultivationRate };
+
+export function setBreakthroughAutomation(state, on) {
+  if (typeof on !== 'boolean' || (on && state.player.stage < 10 && !(state.stats.breakthroughAttempts > 0))) return { ok: false, reason: '先亲自尝试一次跨境突破，再开启闭关托管。' };
+  state.player.autoBreakthrough = on; emit(EV.STATE); return { ok: true };
+}
+/** 晋层/跨境也必须切片，否则长段离线会一直使用旧境界速率。 */
+export function nextCultivationEvent(state) {
+  const progress = stageProgress(state), bt = nextBreakthrough(state.player.stage);
+  if (progress.isTop && (!state.player.autoBreakthrough || bt?.ascension || bt?.locked)) return Infinity;
+  const rate = cultivationRate(state);
+  return rate > 0 ? Math.max(1, (progress.need - progress.cur) / rate * 1000) : Infinity;
+}

@@ -8,9 +8,11 @@ import {
   DUNGEONS, DUNGEON_MAP, DIFFICULTIES, DIFF_MAP, STAMINA, QUALITY_TABLE, DUNGEON_COUNTERS,
   resolveWaves, dropScale, skillScale, powerUnit,
 } from '../data/dungeons.js';
+import { MATERIAL_MAP, ITEM_MAP } from '../data/items.js';
 import { stageInfo } from '../data/realms.js';
 import { rollEquipment, randomTierIndex } from '../data/equipment.js';
 import { rollSkill, randomSkillTier, randomGrade } from '../data/skills.js';
+import { addProduced } from './cargo.js';
 import { addItem } from './inventory.js';
 import { simulateBattle } from './combat.js';
 import { computeAttrs, guildMods, combatPower, sectMods, techEffects } from './character.js';
@@ -86,7 +88,9 @@ function rollQuality(luck = 0) {
 }
 
 function grantRewards(state, d, diff, result, silent) {
-  const mul = diff.rewardMul;
+  const materialTarget = state.dungeon.materialTargets?.[d.id];
+  const focused = d.matPool?.includes(materialTarget);
+  const mul = diff.rewardMul * (focused ? .85 : 1);
   const bb = beastBonuses(state);
   const bailing = dutyMultiplier(state, 'bailing');
   const guildStone = 1 + (guildMods(state).dungeonStone || 0);
@@ -105,7 +109,7 @@ function grantRewards(state, d, diff, result, silent) {
   result.rewards.cultivation = cult;
 
   // 装备
-  const eqChance = clamp(d.equipChance * diff.dropMul, 0, 0.95);
+  const eqChance = clamp((d.equipChance - (focused ? .15 : 0)) * diff.dropMul, 0, 0.95);
   const drops = rint(1, diff.id === 'hell' ? 2 : 1) + (bailing ? 1 : 0) + bb.bonusDrops;
   for (let i = 0; i < drops; i++) {
     if (Math.random() < eqChance) {
@@ -139,12 +143,14 @@ function grantRewards(state, d, diff, result, silent) {
     }
   }
 
+  if (focused) { addItem(state, materialTarget, 1, 'common'); result.rewards.materials.push({ id: materialTarget, qty: 1 }); }
+
   // 商品（带品质）
-  if (Math.random() < d.goodsChance) {
+  if (Math.random() < d.goodsChance * (focused ? .7 : 1)) {
     const itemId = d.goodsPool[Math.floor(Math.random() * d.goodsPool.length)];
     const qty = rint(1, diff.id === 'normal' ? 3 : diff.id === 'hard' ? 6 : 12);
     const quality = rollQuality(0);
-    addItem(state, itemId, qty, quality);
+    addProduced(state, itemId, qty, quality);
     result.rewards.goods.push({ itemId, qty, quality });
   }
 
@@ -348,19 +354,23 @@ export function dungeonPreparation(state, dungeonId, diffId) {
   const recommended = recommendPower(dungeonId, diffId);
   const stoneMul = (1 + beastBonuses(state).stoneBonus + dutyMultiplier(state, 'bailing') * 0.2) * (1 + (guildMods(state).dungeonStone || 0));
   const counters = DUNGEON_COUNTERS.filter((c) => d.tags.includes(c.tag)).map((c) => ({ ...c, equipped: fx.has(c.effect) }));
+  const materialTarget = state.dungeon.materialTargets?.[d.id], focused = d.matPool?.includes(materialTarget);
+  const rewardFactor = focused ? .85 : 1;
   const emptySkills = Object.values(state.skills).filter((s) => !s).length;
   const tips = counters.filter((c) => !c.equipped).map((c) => `建议带上${c.name}：${c.text}。`);
+  if (focused) tips.push(`采材模式：通关额外保证1件${MATERIAL_MAP[materialTarget]?.name || ITEM_MAP[materialTarget]?.name || materialTarget}；灵石与修为减少15%，装备判定减少15个百分点，商品掉率乘70%。`);
+  if (d.mechanic) tips.push(`专属机制「${d.mechanic.name}」：${d.mechanic.rule}`, `应对方式：${d.mechanic.counter}`);
   if (state.player.stage >= 4 && emptySkills) tips.push(`有 ${emptySkills} 个功法空槽，先比较可用功法。`);
   if (power < recommended * 0.8) tips.push('估算战力偏低，可先试普通难度或较早的秘境。');
-  tips.push('首波以满气血入场；胜利波次间恢复 15% 气血。BOSS 从第 5 回合起每 4 回合发动一次 1.5 倍伤害大招。');
+  tips.push(`首波以满气血入场；胜利波次间恢复 15% 气血。BOSS 从第 5 回合起每 4 回合发动一次大招，${d.mechanic?.id === 'thunder' ? '本秘境雷劫倍率递增，最高2.1倍' : '伤害为1.5倍'}。`);
   tips.push('气血、防御、减伤与吸血有助于连续作战；提高伤害可以减少承受大招的次数。');
   return { ok: true, check: canEnter(state, dungeonId, diffId), dungeon: d, diff, attrs, power,
     recommended, counters, tips, pets: deployedBeasts(state),
-    stone: d.stone.map((n) => Math.round(n * diff.rewardMul * stoneMul)),
-    cultivation: d.cultivation.map((n) => Math.round(n * diff.rewardMul)),
-    equipChance: clamp(d.equipChance * diff.dropMul, 0, .95),
+    stone: d.stone.map((n) => Math.round(n * diff.rewardMul * stoneMul * rewardFactor)),
+    cultivation: d.cultivation.map((n) => Math.round(n * diff.rewardMul * rewardFactor)),
+    equipChance: clamp((d.equipChance - (focused ? .15 : 0)) * diff.dropMul, 0, .95),
     skillChance: state.player.stage >= 4 ? clamp(d.skillChance * diff.dropMul, 0, .9) : 0,
-    signature: JSON.stringify([state.side, state.player.stage, attrs, state.skills, state.equipment, state.tech, state.beasts, state.companions, stoneMul]),
+    signature: JSON.stringify([state.side, state.player.stage, attrs, state.skills, state.equipment, state.tech, state.beasts, state.companions, stoneMul, materialTarget]),
   };
 }
 
@@ -371,3 +381,9 @@ export function bestDungeon(state) {
 }
 
 export { DUNGEONS, DUNGEON_MAP, DIFFICULTIES, DIFF_MAP, STAMINA, combatPower, powerUnit };
+
+export function setMaterialTarget(state, dungeonId, itemId) {
+  const d=DUNGEON_MAP[dungeonId];
+  if(!d || state.player.stage<d.unlockStage || (itemId!==null && !d.matPool.includes(itemId)))return {ok:false,reason:'请选择已解锁秘境的掉落材料。'};
+  (state.dungeon.materialTargets ??= {})[dungeonId]=itemId;emit(EV.STATE);return {ok:true};
+}

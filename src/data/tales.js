@@ -6,7 +6,10 @@
  * 避免后期遇到「捡到 50 灵石」这种毫无意义的文本。
  */
 
+import { EXTRA_TALES } from './tales-extra.js';
+
 export const TALES = [
+  ...EXTRA_TALES,
   /* ================= 修仙界 ================= */
   {
     id: 'ancient_book', name: '古书残卷', world: 'cultivation',
@@ -448,12 +451,12 @@ export const TALES = [
 
 export const TALE_MAP = Object.fromEntries(TALES.map((t) => [t.id, t]));
 
-export function talesFor(world, stage) {
-  return TALES.filter((t) => t.world === 'any' || t.world === world);
+export function talesFor(world, stage, state = null) {
+  const context = { farm: state?.farm?.plots?.some(Boolean), ranch: state?.ranch?.slots?.some(Boolean), pet: state?.beasts?.deployed?.length > 0, research: Object.values(state?.research?.done || {}).some(Boolean), estate: Object.values(state?.estate?.owned || {}).some(n => n > 0), shop: state?.estate?.shops > 0, companion: Object.values(state?.companions || {}).some(c => c.affection >= 20) };
+  return TALES.filter(t => (t.world === 'any' || t.world === world) && stage >= (t.minStage || 0) && (!t.context || context[t.context]));
 }
 
-/** 奇闻触发频率：每游戏内小时的概率（受福缘影响） */
+/** 机会之间的最短间隔；每日2–4次机会由系统排定。 */
 export const TALE_RATE = {
-  perHour: 0.16,
-  minGapMs: 25 * 60 * 1000,
+  minGapMs: 3 * 60 * 60 * 1000,
 };

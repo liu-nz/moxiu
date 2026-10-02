@@ -54,6 +54,7 @@ export function ascend(state) {
   next.research.points = Math.floor((state.research.points || 0) * 0.5);
   next.tales.seen = { ...state.tales?.seen };
   next.tales.count = state.tales?.count || 0;
+  next.tales.history = structuredClone(state.tales?.history || []);
   next.social.ranking.bestRanks = { ...state.social?.ranking?.bestRanks };
   // 按新开局统一重置，避免新系统意外继承上世资产或任务。
   Object.assign(state, next);

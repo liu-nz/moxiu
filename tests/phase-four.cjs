@@ -18,13 +18,13 @@ const fs = require('node:fs');
       const { CROPS } = await import('/src/data/crops.js'), { RANCH_MAP } = await import('/src/data/beasts.js');
       const { ALCHEMY_MAP } = await import('/src/data/recipes.js');
       const { pillDescription } = await import('/src/data/alchemy.js');
-      const { ensureDay } = await import('/src/systems/rift.js');
+      const { ensureDay, syncGateLevel } = await import('/src/systems/rift.js');
       const { advance, stopLoop } = await import('/src/core/loop.js');
       const { runDailyDuties } = await import('/src/systems/duties.js');
       stopLoop();
       const checked = [], check = (ok, label) => { if (!ok) throw Error(label); checked.push(label); };
       const near = (a, b) => Math.abs(a - b) < 1e-6;
-      const fresh = (stage = 14) => { const s = createInitialState(Date.parse('2026-10-01T00:00:00Z')); s.side = 'cultivation'; s.player.stage = stage; s.currency.stone = 100000; s.tales = null; ensureDay(s, { silent: true }); return s; };
+      const fresh = (stage = 14) => { const s = createInitialState(Date.parse('2026-10-01T00:00:00Z')); s.side = 'cultivation'; s.player.stage = stage; s.currency.stone = 100000; s.tales = null; ensureDay(s, { silent: true }); syncGateLevel(s); s.market.eventId = 'calm'; return s; };
       const fixedRandom = (rng, fn) => { const old = Math.random; try { Math.random = rng; return fn(); } finally { Math.random = old; } };
       {
         const s = fresh(), before = JSON.stringify(s);

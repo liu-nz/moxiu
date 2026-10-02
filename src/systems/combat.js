@@ -43,10 +43,10 @@ function strike(attacker, defender, opts) {
   const {
     skillPower = 0, critRate = 0, critDmg = 0, lifesteal = 0,
     dodge = 0, dmgReduce = 0, level = 1, element = 1, defScale = 1,
-    rng = Math.random,
+    rng = Math.random, hit = 1,
   } = opts;
 
-  if (dodge > 0 && rng() < dodge) {
+  if (dodge > 0 && rng() < dodge / Math.max(.5, hit)) {
     return { dmg: 0, crit: false, miss: true, heal: 0 };
   }
   const crit = rng() < critRate;
@@ -77,6 +77,8 @@ export function simulateBattle(state, enemy, ctx = {}) {
   const playerScale = ctx.scale || statMultOf(state.player.stage);
   const intel = !!ctx.intel;
   const isBoss = !!enemy.boss;
+  const mechanic = isBoss ? ctx.dungeon?.mechanic : null;
+  const fx = techEffects(state);
   const rng = ctx.rng || Math.random;
   const CHARGE_EVERY = 4;
   const CHARGE_START = 5;
@@ -101,13 +103,23 @@ export function simulateBattle(state, enemy, ctx = {}) {
 
   const pets = (ctx.pets || []).filter((p) => p && p.hp > 0);
   // deployedBeasts 已应用等级成长，此处只使用最终攻击。
-  const metrics = { playerDamage: 0, petDamage: 0, incomingDamage: 0, healing: 0, crits: 0, dodges: 0 };
+  const metrics = { playerDamage: 0, petDamage: 0, incomingDamage: 0, healing: 0, crits: 0, dodges: 0, mechanicDamage: 0, absorbed: 0, foeHealing: 0 };
 
   const log = [];
   const chargeLog = [];
   let rounds = 0;
   const maxRounds = 60;
   const playerFirst = player.spd >= foe.spd;
+  let poisonStacks = 0;
+  let shield = mechanic?.id === 'shield' ? Math.round(foe.hpMax * .2 * (ctx.intel || a.hit >= 1.15 ? .5 : 1) * (a.skillPower >= .3 ? .5 : 1)) : 0;
+  if (mechanic) log.push(`【${mechanic.name}】${mechanic.rule}`);
+  if (mechanic?.id === 'pressure' && player.spd < foe.spd) { player.atk *= .85; log.push('【深海重压】人物攻击降低15%，灵兽合击保持原强度。'); }
+  const damageFoe = dmg => { const absorbed = Math.min(shield, dmg); shield -= absorbed; metrics.absorbed += absorbed; foe.hp -= dmg - absorbed; if (absorbed) log.push(`　　残阵护盾吸收 ${absorbed}，剩余 ${shield}。`); };
+  const hazard = (raw, name) => {
+    const dmg = Math.max(1, Math.round(raw * (1 - clamp(a.dmgReduce + extraReduce, 0, .85))));
+    player.hp -= dmg; metrics.incomingDamage += dmg; metrics.mechanicDamage += dmg;
+    log.push(`第${rounds}回合：【${name}】造成 ${dmg} 伤害。`);
+  };
 
   const isChargeRound = (r) => isBoss && r >= CHARGE_START && (r - CHARGE_START) % CHARGE_EVERY === 0;
   const nextCharge = (r) => {
@@ -126,7 +138,7 @@ export function simulateBattle(state, enemy, ctx = {}) {
       for (let i = 0; i < hits && foe.hp > 0; i++) {
         const damage = Math.max(1, Math.round(pet.atk * defenseReduction(foe.def, level, playerScale)
           * 0.5 * (critical ? 1.6 : 1) * (1 + a.beastBattleDamage)));
-        foe.hp -= damage;
+        damageFoe(damage);
         metrics.petDamage += damage;
         log.push(`　　${pet.name || '灵兽'}合击${critical ? '（暴击）' : combo ? '（连击）' : ''}，追加 ${damage} 伤害。`);
       }
@@ -140,31 +152,35 @@ export function simulateBattle(state, enemy, ctx = {}) {
       const r = strike(player, foe, {
         skillPower: a.skillPower, critRate: a.critRate, critDmg: a.critDmg,
         lifesteal: a.lifesteal, dodge: 0, dmgReduce: 0, level,
-        element: element * (1 + a.beastBattleDamage), defScale: playerScale, rng,
+        element: element * (1 + a.beastBattleDamage), defScale: playerScale, rng, hit: a.hit,
       });
       if (r.miss) { log.push(`第${rounds}回合：你出手落空。`); return; }
-      foe.hp -= r.dmg;
+      damageFoe(r.dmg);
       metrics.playerDamage += r.dmg;
       metrics.crits += r.crit ? 1 : 0;
       const healing = Math.max(0, Math.min(player.hpMax - player.hp, r.heal));
       metrics.healing += healing;
       if (r.heal) player.hp += healing;
       log.push(`第${rounds}回合：你造成 ${r.dmg} 伤害${r.crit ? '（暴击）' : ''}${healing ? `，吸血 ${healing}` : ''}。`);
+      if (foe.hp > 0 && mechanic?.id === 'reflect' && rounds % 3 === 0) hazard(r.dmg * .2 * (a.skillPower >= .3 ? .5 : 1), '剑阵反击');
+      if (player.hp <= 0) return;
       petTurn();
     };
 
     const foeTurn = () => {
       const charging = isChargeRound(rounds);
       const r = strike(foe, player, {
-        skillPower: 0, critRate: 0.05, critDmg: 0.2,
+        skillPower: mechanic?.id === 'ambush' && rounds <= 2 ? .4 : 0, critRate: 0.05, critDmg: 0.2,
         lifesteal: 0, dodge: a.dodge,
         dmgReduce: clamp(a.dmgReduce + extraReduce, 0, 0.85),
         level, element: 1, defScale: playerScale, rng,
       });
       if (r.miss) { metrics.dodges++; log.push(`第${rounds}回合：${foe.name} 的攻击被你闪开。`); return; }
-      const dmg = charging ? Math.round(r.dmg * CHARGE_MUL) : r.dmg;
+      const chargeMul = mechanic?.id === 'thunder' ? Math.min(2.1, CHARGE_MUL + Math.floor(rounds / 4) * .15) : CHARGE_MUL;
+      const dmg = charging ? Math.round(r.dmg * chargeMul) : r.dmg;
       player.hp -= dmg;
       metrics.incomingDamage += dmg;
+      if (mechanic?.id === 'poison' && !fx.has('poison_immunity')) poisonStacks = Math.min(3, poisonStacks + 1);
       if (charging) {
         chargeLog.push(rounds);
         log.push(`第${rounds}回合：【蓄力·大招】${foe.name} 造成 ${dmg} 伤害。`);
@@ -173,8 +189,16 @@ export function simulateBattle(state, enemy, ctx = {}) {
       }
     };
 
-    if (playerFirst) { playerTurn(); if (foe.hp <= 0) break; foeTurn(); }
+    if (playerFirst) { playerTurn(); if (foe.hp <= 0 || player.hp <= 0) break; foeTurn(); }
     else { foeTurn(); if (player.hp <= 0) break; playerTurn(); }
+    if (foe.hp <= 0 || player.hp <= 0) break;
+    if (mechanic?.id === 'poison' && poisonStacks) hazard(player.hpMax * .02 * poisonStacks, `瘴毒${poisonStacks}层`);
+    if (mechanic?.id === 'burn' && !fx.has('heat_shield')) hazard(player.hpMax * .02, '地火灼烧');
+    if (mechanic?.id === 'revive' && !fx.has('light_boost')) {
+      const restored = Math.min(Math.round(foe.hpMax * .04), foe.hpMax - foe.hp);
+      foe.hp += restored; metrics.foeHealing += restored;
+      if (restored) log.push(`第${rounds}回合：【阴魂复苏】恢复 ${restored} 气血。`);
+    }
   }
 
   const win = foe.hp <= 0 && player.hp > 0;
@@ -182,6 +206,8 @@ export function simulateBattle(state, enemy, ctx = {}) {
     win,
     outcome: win ? 'victory' : player.hp <= 0 ? 'defeat' : 'timeout',
     metrics,
+    mechanic: mechanic?.name || null,
+    shieldLeft: shield,
     rounds,
     playerHp: Math.max(0, Math.round(player.hp)),
     playerHpMax: player.hpMax,

@@ -6,7 +6,7 @@ import { h, panel, panelFlush, bar, showToast } from '../dom.js';
 import { DIFFICULTIES, DIFF_MAP, DUNGEONS, STAMINA } from '../../data/dungeons.js';
 import {
   unlockedDungeons, runDungeon, staminaEta, recommendPower, staminaMax,
-  autoBattleView, setAutoBattle, dungeonPreparation,
+  autoBattleView, setAutoBattle, dungeonPreparation, setMaterialTarget,
 } from '../../systems/dungeon.js';
 import { combatPower } from '../../systems/combat.js';
 import { computeAttrs, techEffects } from '../../systems/character.js';
@@ -56,7 +56,7 @@ function battleModal(state, ctx, result) {
   const totals = result.waves.reduce((out, w) => {
     for (const k of Object.keys(out)) out[k] += w.metrics?.[k] || 0;
     return out;
-  }, { playerDamage: 0, petDamage: 0, incomingDamage: 0, healing: 0, crits: 0, dodges: 0 });
+  }, { playerDamage: 0, petDamage: 0, incomingDamage: 0, healing: 0, crits: 0, dodges: 0, mechanicDamage: 0, absorbed: 0, foeHealing: 0 });
   const diagnosis = result.win ? '通关成功。可比较新装备与功法，再尝试更高难度。'
     : last.outcome === 'timeout' ? '达到 60 回合上限，输出未能击败敌人。建议提高攻击、功法威力或补齐科技克制。'
     : `气血耗尽，败于第 ${result.clearedAtWave} 波。${last.chargeRounds.length ? '本波承受了 BOSS 大招。' : ''}可提升气血、减伤与吸血，或降低难度。`;
@@ -74,6 +74,7 @@ function battleModal(state, ctx, result) {
       h('h3.mt-3', { text: '战斗反馈' }),
       h('p.t-xs.mt-1', { text: `人物伤害 ${fmtInt(totals.playerDamage)} · 灵兽伤害 ${fmtInt(totals.petDamage)} · 承受伤害 ${fmtInt(totals.incomingDamage)}` }),
       h('p.t-xs.mt-1', { text: `有效吸血 ${fmtInt(totals.healing)} · 人物暴击 ${totals.crits} 次 · 闪避 ${totals.dodges} 次（伤害包含溢出部分）` }),
+      h('p.t-xs.mt-1', { text: `机制伤害 ${fmtInt(totals.mechanicDamage)} · 敌方护盾吸收 ${fmtInt(totals.absorbed)} · 敌方恢复 ${fmtInt(totals.foeHealing)}` }),
       h('div.mt-3', null, ...result.waves.map((w, i) => h('details', { style: 'padding:8px 0;border-top:1px solid var(--line)' },
         h('summary.t-sm', { text: `第 ${i + 1} 波 · ${w.enemy}${w.boss ? ' · BOSS' : ''} · ${w.win ? '胜' : w.outcome === 'timeout' ? '超时' : '败'} · ${w.rounds} 回合` }),
         h('p.t-xs.t-dim.mt-2', { text: `结束气血：你 ${fmtInt(w.playerHp)} / ${fmtInt(w.playerHpMax)} · 敌人 ${fmtInt(w.enemyHp)} / ${fmtInt(w.enemyHpMax)}` }),
@@ -201,6 +202,7 @@ export function renderDungeon(state, ctx) {
           h('div', { text: `推荐战力 ${DIFFICULTIES.map((x) => fmtInt(recommendPower(d.id, x.id))).join(' / ')}` }),
         ),
       ),
+      d.unlocked ? h('label.production-field.mt-2', null, h('span.t-xs', {text:'本次采材目标'}), h('select', {'aria-label':`${d.name}采材目标`, onchange:e=>{const r=setMaterialTarget(state,d.id,e.target.value||null);if(!r.ok)showToast(r.reason,'warn');ctx.rerender();}}, h('option',{value:'',selected:!state.dungeon.materialTargets?.[d.id],text:'常规探索 · 保留全部收益'}), d.matPool.map(id=>h('option',{value:id,selected:state.dungeon.materialTargets?.[d.id]===id,text:`保证1件${getItem(id)?.name || id} · 其他收益降低`})))) : null,
       h('div.btn-row.mt-2', null,
         DIFFICULTIES.map((diff) => {
           const ok = d.unlocked;
