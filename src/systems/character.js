@@ -282,7 +282,7 @@ export function computeAttrs(state) {
 
   const cultSpeed = clamp(
     (mods.cultSpeed || 0) + (ev.cultSpeedAdd || 0),
-    0, CAPS.cultSpeed,
+    -0.80, CAPS.cultSpeed,
   );
 
   return {

@@ -18,6 +18,7 @@ import { clamp, fmtInt, fmtPct } from '../core/util.js';
 import { syncGateLevel } from './rift.js';
 import { updateTutorial } from './tutorial.js';
 import { researchEffects } from '../data/research.js';
+import { lifestyleEffects } from './lifestyle.js';
 import { isAscensionReady } from '../data/realms.js';
 
 /** 主循环：修为增长 */
@@ -95,7 +96,12 @@ export function breakthroughInfo(state) {
 }
 
 /** 执行突破 */
+export function breakthroughLossMultiplier(state) {
+  return researchEffects(state).breakthroughLossMul * (1 - lifestyleEffects(state).breakthroughLossCut);
+}
+
 export function attemptBreakthrough(state) {
+  if (state.player.ascensionReady) return { ok: false, reason: '雷劫已渡过，可以在轮回页确认飞升。' };
   const info = breakthroughInfo(state);
   if (!info.available) return { ok: false, reason: info.reason };
   if (info.locked) return { ok: false, reason: info.reason, locked: true };
@@ -110,13 +116,14 @@ export function attemptBreakthrough(state) {
   if (info.ascension) {
     if (!success) {
       state.player.breakthroughFails += 1;
-      const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * researchEffects(state).breakthroughLossMul;
+      const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * breakthroughLossMultiplier(state);
       state.player.cultivation = Math.max(0, state.player.cultivation - lost);
       logWarn(state, `雷劫未过。修为逸散 ${fmtInt(lost)}。${info.pityLeft > 1 ? '再试一次。' : '下次必定飞升。'}`);
       emit(EV.BREAKTHROUGH, { success: false, ascension: true });
       emit(EV.STATE);
       return { ok: true, success: false, ascension: true };
     }
+    state.player.ascensionReady = true;
     logHl(state, '九重雷劫已过。你站在飞升台上，看见了两个世界同时在你脚下。');
     emit(EV.BREAKTHROUGH, { success: true, ascension: true });
     emit(EV.STATE);
@@ -140,7 +147,7 @@ export function attemptBreakthrough(state) {
   }
 
   state.player.breakthroughFails += 1;
-  const lossMul = researchEffects(state).breakthroughLossMul;
+  const lossMul = breakthroughLossMultiplier(state);
   const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * lossMul;
   state.player.cultivation = Math.max(0, state.player.cultivation - lost);
   const left = Math.max(0, BREAKTHROUGH_PITY - state.player.breakthroughFails);

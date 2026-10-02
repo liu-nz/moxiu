@@ -5,7 +5,7 @@
  */
 
 import {
-  DUNGEONS, DUNGEON_MAP, DIFFICULTIES, DIFF_MAP, STAMINA, QUALITY_TABLE,
+  DUNGEONS, DUNGEON_MAP, DIFFICULTIES, DIFF_MAP, STAMINA, QUALITY_TABLE, DUNGEON_COUNTERS,
   resolveWaves, dropScale, skillScale, powerUnit,
 } from '../data/dungeons.js';
 import { stageInfo } from '../data/realms.js';
@@ -13,8 +13,9 @@ import { rollEquipment, randomTierIndex } from '../data/equipment.js';
 import { rollSkill, randomSkillTier, randomGrade } from '../data/skills.js';
 import { addItem } from './inventory.js';
 import { simulateBattle } from './combat.js';
-import { computeAttrs, guildMods, combatPower, sectMods } from './character.js';
+import { computeAttrs, guildMods, combatPower, sectMods, techEffects } from './character.js';
 import { researchEffects } from '../data/research.js';
+import { lifestyleEffects } from './lifestyle.js';
 import { advanceIfReady } from './cultivation.js';
 import { deployedBeasts, beastBonuses, tryCapture } from './beasts.js';
 import { dutyMultiplier } from './companion.js';
@@ -32,21 +33,25 @@ export function staminaMax(state) {
   return STAMINA.max + (guildMods(state).staminaMax || 0);
 }
 
+export function staminaInterval(state) {
+  return STAMINA.regenPerMs / (1 + lifestyleEffects(state).staminaRegen);
+}
 export function tickStamina(state, dtMs) {
+  if (!Number.isFinite(dtMs) || dtMs <= 0) return;
   const max = staminaMax(state);
   if (state.player.stamina >= max) { state.player.staminaAcc = 0; return; }
-  state.player.staminaAcc = (state.player.staminaAcc || 0) + dtMs;
-  while (state.player.staminaAcc >= STAMINA.regenPerMs && state.player.stamina < max) {
-    state.player.staminaAcc -= STAMINA.regenPerMs;
-    state.player.stamina = Math.min(max, state.player.stamina + 1);
-  }
+  const interval = staminaInterval(state);
+  const acc = (state.player.staminaAcc || 0) + dtMs;
+  const gain = Math.floor(acc / interval);
+  state.player.stamina = Math.min(max, state.player.stamina + gain);
+  state.player.staminaAcc = state.player.stamina >= max ? 0 : acc - gain * interval;
 }
-
-export function staminaEta(state) {
+/** 距离体力回满；next=true 时只计算下一点。均为世界时间。 */
+export function staminaEta(state, next = false) {
   const max = staminaMax(state);
   if (state.player.stamina >= max) return 0;
-  const need = max - state.player.stamina;
-  return need * STAMINA.regenPerMs - (state.player.staminaAcc || 0);
+  const need = next ? 1 : Math.ceil(max - state.player.stamina);
+  return Math.max(0, need * staminaInterval(state) - (state.player.staminaAcc || 0));
 }
 
 /* ---------------- 解锁 ---------------- */
@@ -60,14 +65,15 @@ export function unlockedDungeons(state) {
   }));
 }
 
-export function canEnter(state, dungeonId, diffId) {
+export function canEnter(state, dungeonId, diffId, { free = false } = {}) {
+  if (state.side !== 'cultivation' && !free) return { ok: false, reason: '请先穿越到修仙界，再进入秘境。' };
   const d = DUNGEON_MAP[dungeonId];
   const diff = DIFF_MAP[diffId];
   if (!d || !diff) return { ok: false, reason: '没有这个副本。' };
   if (state.player.stage < d.unlockStage) {
     return { ok: false, reason: `需要达到 ${stageInfo(d.unlockStage).stage.name} 才能进入。` };
   }
-  if (state.player.stamina < diff.stamina) {
+  if (!free && state.player.stamina < diff.stamina) {
     return { ok: false, reason: `体力不足（需 ${diff.stamina}，当前 ${Math.floor(state.player.stamina)}）。` };
   }
   return { ok: true };
@@ -151,7 +157,7 @@ function grantRewards(state, d, diff, result, silent) {
 
 /* ---------------- 副本主流程 ---------------- */
 export function runDungeon(state, dungeonId, diffId, opts = {}) {
-  const check = canEnter(state, dungeonId, diffId);
+  const check = canEnter(state, dungeonId, diffId, opts);
   if (!check.ok) return { ok: false, reason: check.reason };
 
   const d = DUNGEON_MAP[dungeonId];
@@ -172,6 +178,7 @@ export function runDungeon(state, dungeonId, diffId, opts = {}) {
     waves: [],
     rewards: { stone: 0, cultivation: 0, equipment: [], skills: [], goods: [], materials: [], beast: null },
     clearedAtWave: 0,
+    enteredStage: state.player.stage,
   };
 
   const attrs = computeAttrs(state);
@@ -187,7 +194,7 @@ export function runDungeon(state, dungeonId, diffId, opts = {}) {
       def: Math.round(w.def * diff.statMul),
       spd: Math.round(w.spd * diff.statMul * 10) / 10,
     };
-    const battle = simulateBattle(state, enemy, { dungeon: d, playerHp: hp, pets, intel });
+    const battle = simulateBattle(state, enemy, { dungeon: d, playerHp: hp, pets, intel, rng: opts.rng });
     state.stats.battles += 1;
     result.waves.push({ enemy: w.name, boss: !!w.boss, ...battle });
     hp = battle.playerHp;
@@ -218,13 +225,15 @@ export function runDungeon(state, dungeonId, diffId, opts = {}) {
     }
   }
 
-  if (!silent) {
+  {
     state.dungeon.log.unshift({
       t: state.world.clockMs,
       dungeon: d.name,
       diff: diff.name,
       win: result.win,
       stone: result.rewards.stone,
+      wave: result.clearedAtWave,
+      outcome: result.waves.at(-1)?.outcome,
     });
     state.dungeon.log = state.dungeon.log.slice(0, 30);
   }
@@ -237,18 +246,18 @@ export function runDungeon(state, dungeonId, diffId, opts = {}) {
 
 /* ---------------- 挂机自动战斗（GDD 2.1 的 30 秒循环） ---------------- */
 export function setAutoBattle(state, on, dungeonId, diffId) {
-  if (!state.auto) state.auto = { battleOn: false, dungeonId: null, diffId: 'normal', acc: 0, runs: 0, fails: 0 };
-  if (dungeonId) state.auto.dungeonId = dungeonId;
-  if (diffId) state.auto.diffId = diffId;
-  if (on && !state.auto.dungeonId) {
-    const list = DUNGEONS.filter((d) => state.player.stage >= d.unlockStage);
-    if (!list.length) return { ok: false, reason: '还没有解锁任何副本。' };
-    state.auto.dungeonId = list[list.length - 1].id;
-  }
-  state.auto.battleOn = !!on;
-  state.auto.acc = 0;
-  state.auto.fails = 0;
-  toast(on ? `自动战斗已开启：${DUNGEON_MAP[state.auto.dungeonId]?.name} · ${DIFF_MAP[state.auto.diffId]?.name}` : '自动战斗已关闭。');
+  const current = state.auto || {};
+  let selected = dungeonId || current.dungeonId;
+  const difficulty = diffId || current.diffId || 'normal';
+  if (on && !selected) selected = DUNGEONS.find(d => state.player.stage >= d.unlockStage)?.id;
+  const d = selected ? DUNGEON_MAP[selected] : null;
+  if (typeof on !== 'boolean' || !DIFF_MAP[difficulty] || (selected && !d)) return { ok: false, reason: '副本或难度不合法。' };
+  if (d && state.player.stage < d.unlockStage) return { ok: false, reason: '该秘境尚未解锁。' };
+  if (on && !d) return { ok: false, reason: '还没有解锁副本。' };
+  if (on && state.side !== 'cultivation') return { ok: false, reason: '请在修仙界开启自动战斗。' };
+  state.auto = { ...current, dungeonId: selected || null, diffId: difficulty, battleOn: on,
+    acc: 0, fails: 0, stopReason: null, wins: current.wins || 0, losses: current.losses || 0, runs: current.runs || 0 };
+  toast(on ? `自动战斗已开启：${d.name} · ${DIFF_MAP[difficulty].name}` : '自动战斗已关闭。');
   emit(EV.STATE);
   return { ok: true };
 }
@@ -256,8 +265,10 @@ export function setAutoBattle(state, on, dungeonId, diffId) {
 export function tickAutoBattle(state, dtMs) {
   const a = state.auto;
   if (!a || !a.battleOn || !a.dungeonId) return;
-  const diff = DIFF_MAP[a.diffId];
-  if (!diff) return;
+  if (!Number.isFinite(dtMs) || dtMs <= 0 || state.side !== 'cultivation') return;
+  if (!DIFF_MAP[a.diffId] || !DUNGEON_MAP[a.dungeonId] || state.player.stage < DUNGEON_MAP[a.dungeonId].unlockStage) {
+    a.battleOn = false; a.acc = 0; a.stopReason = '目标已失效，请重新选择。'; emit(EV.STATE); return;
+  }
 
   a.acc = (a.acc || 0) + dtMs;
   let runs = Math.floor(a.acc / AUTO_INTERVAL_MS);
@@ -266,14 +277,17 @@ export function tickAutoBattle(state, dtMs) {
   runs = Math.min(runs, 60);
 
   for (let i = 0; i < runs; i++) {
-    if (state.player.stamina < diff.stamina) break;
+    if (state.player.stamina < DIFF_MAP[a.diffId].stamina) break;
     const res = runDungeon(state, a.dungeonId, a.diffId, { silent: true });
-    if (!res.ok) break;
+    if (!res.ok) { a.battleOn = false; a.stopReason = res.reason; break; }
     a.runs = (a.runs || 0) + 1;
 
+    a.lastResult = { win: res.win, dungeon: res.dungeon.name, diff: res.diff.name, wave: res.clearedAtWave, stone: res.rewards.stone, at: state.world.clockMs };
     if (res.win) {
+      a.wins = (a.wins || 0) + 1;
       a.fails = 0;
     } else {
+      a.losses = (a.losses || 0) + 1;
       a.fails = (a.fails || 0) + 1;
       if (a.fails >= 3) {
         // 连败三次：自动降档；已经是普通还打不过就停机
@@ -284,6 +298,7 @@ export function tickAutoBattle(state, dtMs) {
           logWarn(state, `自动战斗连续败退，已降为「${DIFF_MAP[a.diffId].name}」。`);
         } else {
           a.battleOn = false;
+          a.stopReason = '普通难度连续败退三次，先调整配装。';
           logWarn(state, `自动战斗连续败退，已自动停止。建议先提升 Build 再开。`);
           break;
         }
@@ -301,6 +316,9 @@ export function autoBattleView(state) {
     diffId: a.diffId || 'normal',
     runs: a.runs || 0,
     fails: a.fails || 0,
+    wins: a.wins || 0, losses: a.losses || 0, lastResult: a.lastResult || null,
+    status: !a.battleOn ? (a.stopReason || '已停止') : state.side !== 'cultivation' ? '人在现代界，暂停战斗'
+      : state.player.stamina < (DIFF_MAP[a.diffId]?.stamina || 10) ? '等待体力恢复' : '等待下一轮（每 30 秒世界时间）',
     dungeons: DUNGEONS.map((d) => ({
       ...d,
       unlocked: state.player.stage >= d.unlockStage,
@@ -321,6 +339,29 @@ export function recommendPower(dungeonId, diffId) {
   const atk = boss.atk * diff.statMul;
   const def = boss.def * diff.statMul;
   return Math.round(atk * 3 + def * 2 + hp * 0.35 + 20);
+}
+
+export function dungeonPreparation(state, dungeonId, diffId) {
+  const d = DUNGEON_MAP[dungeonId], diff = DIFF_MAP[diffId];
+  if (!d || !diff) return { ok: false, reason: '没有这个副本或难度。' };
+  const attrs = computeAttrs(state), fx = techEffects(state), power = combatPower(state);
+  const recommended = recommendPower(dungeonId, diffId);
+  const stoneMul = (1 + beastBonuses(state).stoneBonus + dutyMultiplier(state, 'bailing') * 0.2) * (1 + (guildMods(state).dungeonStone || 0));
+  const counters = DUNGEON_COUNTERS.filter((c) => d.tags.includes(c.tag)).map((c) => ({ ...c, equipped: fx.has(c.effect) }));
+  const emptySkills = Object.values(state.skills).filter((s) => !s).length;
+  const tips = counters.filter((c) => !c.equipped).map((c) => `建议带上${c.name}：${c.text}。`);
+  if (state.player.stage >= 4 && emptySkills) tips.push(`有 ${emptySkills} 个功法空槽，先比较可用功法。`);
+  if (power < recommended * 0.8) tips.push('估算战力偏低，可先试普通难度或较早的秘境。');
+  tips.push('首波以满气血入场；胜利波次间恢复 15% 气血。BOSS 从第 5 回合起每 4 回合发动一次 1.5 倍伤害大招。');
+  tips.push('气血、防御、减伤与吸血有助于连续作战；提高伤害可以减少承受大招的次数。');
+  return { ok: true, check: canEnter(state, dungeonId, diffId), dungeon: d, diff, attrs, power,
+    recommended, counters, tips, pets: deployedBeasts(state),
+    stone: d.stone.map((n) => Math.round(n * diff.rewardMul * stoneMul)),
+    cultivation: d.cultivation.map((n) => Math.round(n * diff.rewardMul)),
+    equipChance: clamp(d.equipChance * diff.dropMul, 0, .95),
+    skillChance: state.player.stage >= 4 ? clamp(d.skillChance * diff.dropMul, 0, .9) : 0,
+    signature: JSON.stringify([state.side, state.player.stage, attrs, state.skills, state.equipment, state.tech, state.beasts, state.companions, stoneMul]),
+  };
 }
 
 /** 最靠后的已解锁副本（道侣代刷用） */

@@ -16,6 +16,13 @@ export const DIFFICULTIES = [
 ];
 export const DIFF_MAP = Object.fromEntries(DIFFICULTIES.map((d) => [d.id, d]));
 
+/** 战前说明与实际科技克制共用，防止提示和结算各写一套。 */
+export const DUNGEON_COUNTERS = [
+  { tag: 'dark', effect: 'light_boost', name: '强光手电', damage: 2, reduce: 0, text: '阴系伤害 ×2' },
+  { tag: 'poison', effect: 'poison_immunity', name: '抗生素', damage: 1.35, reduce: 0.20, text: '毒系伤害 ×1.35，额外减伤 20%' },
+  { tag: 'fire', effect: 'heat_shield', name: '防火服', damage: 1, reduce: 0.25, text: '炼狱系额外减伤 25%' },
+];
+
 /** 波次系数：hp/def 相对玩家基础攻击，atk 相对玩家基础气血，spd 相对玩家基础速度 */
 const WAVE_PROFILE = [
   { hp: 2.4, atk: 0.033, def: 0.05, spd: 0.85 },
