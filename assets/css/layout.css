@@ -288,3 +288,26 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--jade);outline
   .mobilenav-inner{overflow:hidden;}.mobilenav button{flex:1 1 0;min-width:0;min-height:58px;border-right:0;font-family:var(--font-sans);}.mobilenav button:nth-child(3){font-weight:700;}.mobilenav button.on{box-shadow:inset 0 3px var(--jade);}.gate-intro h1{font-size:21px;}.btn-row>.btn{white-space:normal;}.modal-foot{flex-wrap:wrap;}body{padding-bottom:calc(74px + env(safe-area-inset-bottom));}
 }
 @media(prefers-reduced-motion:reduce){.gate-ring{animation:none;}}
+
+/* 第二阶段：市场报价与经营选择 */
+.market-tabs { display:flex; gap:8px; }
+.market-tabs .btn { flex:1; }
+.market-opportunities { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.opportunity-card { padding:14px; border:1px solid var(--line); background:var(--bg-sunken); min-width:0; }
+.opportunity-card .t-num { font-size:14px; overflow-wrap:anywhere; }
+.market-row .rowitem-main { min-width:0; }
+.market-details { margin-top:8px; }
+.market-details summary, .market-local summary { cursor:pointer; font-size:12px; color:var(--ink-3); padding:4px 0; }
+.market-details p { white-space:pre-line; line-height:1.8; }
+.market-local { padding:16px; }
+.market-local > summary { font-size:15px; color:var(--ink); }
+.quote-detail { white-space:pre-line; line-height:2; overflow-wrap:anywhere; }
+.investment-note { margin-top:12px; padding:12px; border-left:2px solid var(--ink); background:var(--bg-sunken); line-height:1.8; }
+@media (max-width:700px) {
+  .market-opportunities { grid-template-columns:1fr; }
+  .opportunity-card { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+  .opportunity-card > strong { width:100%; }
+  .market-row { align-items:flex-start; flex-direction:column; }
+  .market-row .rowitem-act { width:100%; flex-wrap:wrap; justify-content:flex-end; }
+  .market-row .rowitem-price { margin-right:auto; }
+}

@@ -49,7 +49,7 @@ export function renderEstate(state, ctx) {
   const s = estateSummary(state);
 
   const head = panel('地产', `租金 ¥${fmtInt(s.rentPerHour)} / 时`,
-    h('p.t-sm.t-dim', { text: '公寓收租、店铺卖货、仓库扩货架。一期所有地产均可购买、无竞争；二期才会加入地皮限量与玩家竞拍。' }),
+    h('p.t-sm.t-dim', { text: '地产带来稳定租金，店铺减少手动出货，仓库增加每次跨界的载重。回本时间按当前世界与角色、城市加成估算。' }),
     h('dl', { style: 'margin:0' },
       h('dl.kv', null, h('dt', { text: '合计租金' }), h('dd.t-num', { text: `¥${fmtInt(s.rentPerHour)} / 时` })),
       h('dl.kv', null, h('dt', { text: '店铺' }), h('dd.t-num', { text: `${s.shops} 间` })),
@@ -65,7 +65,7 @@ export function renderEstate(state, ctx) {
           h('span.rowitem-name', { text: e.name }),
           h('span.tag', { text: `持有 ${e.owned} / ${e.maxOwn}` }),
         ),
-        h('div.rowitem-meta', { text: `租金 ¥${fmtInt(e.rent)} / 时 / 处` }),
+        h('div.rowitem-meta', { text: `新增租金 ¥${e.actualRent.toFixed(1)} / 时 · 预计 ${e.paybackHours.toFixed(1)} 小时回本` }),
         h('div.t-xs.t-dim', { text: e.desc }),
       ),
       h('div.rowitem-act', null,
@@ -80,12 +80,13 @@ export function renderEstate(state, ctx) {
   );
 
   const shops = panel('店铺', `${s.shops} 间`,
-    h('p.t-sm.t-dim', { text: `店铺会自动把背包里的「外来货」按当日行情卖出，渠道抽成 ${fmtPct(s.channelFee, 0)}。铁心兰在岗时效率 +50%。` }),
+    h('p.t-sm.t-dim', { text: `你在现代界时，店铺会自动把背包里的修仙货按整批行情卖成人民币，渠道抽成 ${fmtPct(s.channelFee, 0)}。铁心兰在岗时效率 +50%。` }),
     h('dl', { style: 'margin:0' },
       h('dl.kv', null, h('dt', { text: '当前店铺' }), h('dd.t-num', { text: `${s.shops} 间` })),
       h('dl.kv', null, h('dt', { text: '自动售货' }), h('dd.t-num', { text: s.autoSell ? '已开启' : '未开启' })),
-      h('dl.kv', null, h('dt', { text: '每间吞吐' }), h('dd.t-num', { text: '1.2 件 / 时' })),
+      h('dl.kv', null, h('dt', { text: '每间吞吐' }), h('dd.t-num', { text: `${s.shopCapacity.toFixed(2)} 件 / 时（含加成）` })),
     ),
+    h('p.investment-note.t-xs', { text: `下一间投入 ¥${fmtInt(s.shopPrice)}，吞吐增加 ${s.shopCapacity.toFixed(2)} 件 / 时。售货回款取决于货物与行情；售出已有库存不会创造额外利润，因此不承诺固定回本。离开现代界后自动售货暂停，租金按半速继续。` }),
     h('div.btn-row.mt-3', null,
       state.modern.businessLevel < s.shopUnlock
         ? h('button.btn', { text: `需商业等级 Lv.${s.shopUnlock}`, disabled: true })
@@ -104,7 +105,7 @@ export function renderEstate(state, ctx) {
   );
 
   const warehouse = panel('仓库', `Lv.${s.warehouseLevel} / ${WAREHOUSE.maxLevel}`,
-    h('p.t-sm.t-dim', { text: '扩货架。仓库每升一级，跨界时可携带的货物上限 +1 kg——这是唯一能突破界门载重的途径。' }),
+    h('p.t-sm.t-dim', { text: '扩货架。仓库每升一级，跨界时可携带的货物上限 +1 kg——配合界门晋阶与其他载重加成，增加每次可带的货物。' }),
     h('dl', { style: 'margin:0' },
       h('dl.kv', null, h('dt', { text: '当前载重加成' }), h('dd.t-num', { text: `+${s.carryBonus} kg` })),
       h('dl.kv', null, h('dt', { text: '下一级' }), h('dd.t-num', { text: `+${s.carryBonus + 1} kg` })),

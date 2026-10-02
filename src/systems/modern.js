@@ -36,6 +36,7 @@ export function tickModern(state, dtMs) {
   const gain = totalIncomePerHour(state) * hours;
   if (gain <= 0) return 0;
   state.currency.cny += gain;
+  state.stats.passiveCny = (state.stats.passiveCny || 0) + gain;
   earn(state, 'cny', gain);
   state.stats.maxCny = Math.max(state.stats.maxCny || 0, state.currency.cny);
   return gain;
@@ -86,3 +87,20 @@ export function toggleWork(state) {
 }
 
 export { BUSINESS, JOB_MAP, jobRate, jobUpgradeCost };
+
+
+/** 固定当前世界与城市加成，只估算新增被动收入，不折算两界货币。 */
+export function investmentPreview(state) {
+  const mul = sideFactor(state, SIDE.MODERN) * cityMul(state);
+  const job = state.modern.job;
+  const lv = state.modern.jobLevel;
+  const jobCost = job ? jobUpgradeCost(job, lv) : 0;
+  const jobDelta = job && state.modern.workOn ? (jobRate(job, lv + 1) - jobRate(job, lv)) * mul : 0;
+  const bizLv = state.modern.businessLevel;
+  const bizCost = BUSINESS.costOf(bizLv);
+  const bizDelta = bizLv < BUSINESS.maxLevel ? (BUSINESS.passiveIncome(bizLv + 1) - BUSINESS.passiveIncome(bizLv)) * mul : 0;
+  return {
+    job: { cost: jobCost, delta: jobDelta, hours: jobDelta > 0 ? jobCost / jobDelta : Infinity },
+    business: { cost: bizCost, delta: bizDelta, hours: bizDelta > 0 ? bizCost / bizDelta : Infinity },
+  };
+}

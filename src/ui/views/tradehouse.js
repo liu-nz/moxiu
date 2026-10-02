@@ -20,10 +20,11 @@ export function renderTradehouse(state, ctx) {
 
   if (!ui.itemUid && items.length) ui.itemUid = items[0].uid;
   const sel = items.find((r) => r.uid === ui.itemUid) || items[0] || null;
+  if (sel && ui.itemUid !== sel.uid) { ui.itemUid = sel.uid; ui.qty = sel.qty; }
   if (sel && (!ui.qty || ui.qty > sel.qty)) ui.qty = sel.qty;
 
   const ref = sel ? referencePrice(state, sel.itemId, ui.currency, sel.quality) : 0;
-  const unit = Math.round(ref * ui.ratio);
+  const unit = Math.max(1, Math.round(ref * ui.ratio));
   const fee = Math.round(unit * (ui.qty || 0) * s.feeRate);
   const speed = sel
     ? TRADEHOUSE.baseThroughput * TRADEHOUSE.speedFactor(ui.ratio) * s.speedMul
@@ -80,7 +81,7 @@ export function renderTradehouse(state, ctx) {
         h('dl.kv', null, h('dt', { text: '参考价（8.5 折后）' }), h('dd.t-num', { text: `${fmtInt(ref)} ${ui.currency === 'cny' ? '¥' : '灵石'}` })),
         h('dl.kv', null, h('dt', { text: '你的定价' }), h('dd.t-num.t-strong', { text: `${fmtInt(unit)} ${ui.currency === 'cny' ? '¥' : '灵石'}` })),
         h('dl.kv', null, h('dt', { text: '相对参考价' }), h('dd.t-num', { text: `×${ui.ratio.toFixed(2)}` })),
-        h('dl.kv', null, h('dt', { text: '上架税费' }), h('dd.t-num', { text: `${fmtInt(fee)} 灵石（${fmtPct(s.feeRate, 1)}）` })),
+        h('dl.kv', null, h('dt', { text: '上架税费' }), h('dd.t-num', { text: `${fmtInt(fee)} ${ui.currency === 'cny' ? '人民币' : '灵石'}（${fmtPct(s.feeRate, 1)}，按收款货币支付）` })),
         h('dl.kv', null, h('dt', { text: '预计成交速度' }), h('dd.t-num', { text: `${speed.toFixed(2)} 件 / 时` })),
         h('dl.kv', null, h('dt', { text: '预计清空' }), h('dd.t-num', { text: isFinite(etaMs) ? fmtDuration(etaMs) : '—' })),
       ),
@@ -88,7 +89,7 @@ export function renderTradehouse(state, ctx) {
       h('div.btn-row.mt-3', null,
         h('button.btn.btn-solid', {
           text: `上架 ${ui.qty} 件`,
-          disabled: !s.canList || state.currency.stone < fee,
+          disabled: !s.canList || state.currency[ui.currency] < fee,
           onclick: () => {
             const r = list(state, ui.itemUid, ui.qty, ui.ratio, ui.currency);
             if (!r.ok) { showToast(r.reason, 'warn'); return; }

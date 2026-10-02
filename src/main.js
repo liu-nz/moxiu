@@ -8,11 +8,10 @@
 
 import { createInitialState } from './core/state.js';
 import * as Save from './core/save.js';
-import { startLoop, setMode } from './core/loop.js';
+import { startLoop, setMode, syncWorldDay } from './core/loop.js';
 import { initApp, scheduleRender } from './ui/app.js';
 import { modal, showToast, h, kv } from './ui/dom.js';
 import { applyOffline } from './systems/offline.js';
-import { ensureDay } from './systems/rift.js';
 import { updateTutorial } from './systems/tutorial.js';
 import { stageInfo } from './data/realms.js';
 import { fmtDuration, fmtInt } from './core/util.js';
@@ -144,16 +143,17 @@ async function boot() {
   if (!state.player.hp || state.player.hp <= 0) state.player.hp = null;
 
   Save.bindState(state);
-  Save.startAutoSave(() => state, 8000);
-  Save.installUnloadHook(() => state);
+
 
   // 界潮日初始化 / 补发
-  ensureDay(state);
+  syncWorldDay(state);
   updateTutorial(state);
 
   // 离线收益（新档没有离线可言）
   const report = source === 'new' ? null : applyOffline(state, now);
 
+  Save.startAutoSave(() => state, 8000);
+  Save.installUnloadHook(() => state);
   initApp(state, report);
   startLoop(() => state);
   hideBootScreen();
@@ -183,13 +183,14 @@ function showStorageWarning(storage) {
 }
 
 function showOfflineReport(report, source) {
+  const signed = (v) => `${v < 0 ? '−' : '+'}${fmtInt(Math.abs(v))}`;
   const rows = [
     kv('存档来源', SOURCE_LABEL[source] || source),
     kv('离线时长', fmtDuration(report.elapsedReal)),
     kv('世界时间推进', fmtDuration(report.worldMs)),
     kv('修为增长', `+${fmtInt(report.cult)}`),
-    kv('灵石', `+${fmtInt(report.stone)}`),
-    kv('现代收入', `+¥${fmtInt(report.cny)}`),
+    kv('灵石变化', signed(report.stone)),
+    kv('现代资金变化', `¥${signed(report.cny)}`),
     report.rp > 0.5 ? kv('研究点', `+${fmtInt(report.rp)}`) : null,
     report.stageTo > report.stageFrom ? kv('境界推进', `${report.stageFrom + 1} 阶 → ${report.stageTo + 1} 阶`) : null,
     report.capped ? kv('结算上限', '最多结算 3 天') : null,
