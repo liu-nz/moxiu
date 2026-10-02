@@ -47,6 +47,9 @@ function showBootScreen(msg) {
 }
 
 function hideBootScreen() {
+  window.__moxiu_booted = true;
+  const fallback = document.getElementById('boot-fallback');
+  if (fallback) fallback.style.display = 'none';
   const el = document.getElementById('boot-screen');
   if (el) el.style.display = 'none';
 }
@@ -151,7 +154,7 @@ async function boot() {
   // 离线收益（新档没有离线可言）
   const report = source === 'new' ? null : applyOffline(state, now);
 
-  initApp(state);
+  initApp(state, report);
   startLoop(() => state);
   hideBootScreen();
 
@@ -214,7 +217,7 @@ function showWelcome(s) {
       h('p.t-xs.t-dim', { text: '核心循环：发现机会 → 跨界倒卖 → 获得资本 → 投资生产 → 强化修仙 → 解锁新资源 → 反哺另一世界。' }),
       h('p.t-xs.t-dim.mt-2', { text: '正式版内容：九大境界 · 八大副本 · 灵田牧场 · 炼丹炼器 · 灵科研究树 · 道侣灵兽 · 地产店铺 · 54 个奇闻事件 · 轮回与天命。' }),
       h('hr.hr'),
-      h('p.t-xs.t-dim', { text: '时间模式：默认为「标准」——世界时钟对齐真实时间，界潮每日 05:00 全服统一刷新。若想快速体验完整流程，可在顶栏切到「沙盒」，那里可以 1×/10×/60× 快进。' }),
+      h('p.t-xs.t-dim', { text: '时间模式：默认为「标准」——世界时钟对齐真实时间，界潮每日 05:00 全服统一刷新。若想快速体验完整流程，可在顶栏「设置」切到「沙盒」，那里可以 1×/10×/60× 快进。' }),
     ),
     actions: [
       { label: '跳过引导', onClick: () => { import('./systems/tutorial.js').then((m) => { m.skipTutorial(s); scheduleRender(); }); } },

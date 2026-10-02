@@ -95,7 +95,7 @@ function pathModal(state, ctx) {
             state.tutorial.done.path = true;
             ctx.closeOverlay();
             ctx.rerender();
-            showToast(r.free ? `免费改修「${p.name}」之道。` : `已改修「${p.name}」之道。`, 'good');
+            showToast(r.first ? `已选择「${p.name}」之道。` : r.free ? `免费改修「${p.name}」之道。` : `已改修「${p.name}」之道。`, 'good');
           },
         }),
       ),
@@ -182,7 +182,7 @@ export function renderCultivation(state, ctx) {
   );
 
   /* ---- 境界路标 ---- */
-  const roadmap = panel('境界路标', `共 ${FLAT_STAGES.length} 阶（MVP 开放至筑基）`,
+  const roadmap = panel('境界路标', `共 ${FLAT_STAGES.length} 阶（九境界已开放）`,
     h('div', { style: 'max-height:340px;overflow:auto' },
       FLAT_STAGES.map((s) => {
         const gi = s.globalIndex;

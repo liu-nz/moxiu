@@ -1,0 +1,43 @@
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const assert=require('node:assert/strict');
+require('node:fs').mkdirSync('test-results', {recursive:true});
+(async()=>{
+const browser=await chromium.launch({...(process.env.CHROME_PATH ? {executablePath:process.env.CHROME_PATH} : {}),headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:1000}}); const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error') errors.push(m.text())});
+await page.goto(process.env.MOXIU_URL || 'http://127.0.0.1:8080');await page.getByRole('button',{name:'开始',exact:true}).click();
+await page.screenshot({path:'test-results/现代首页.png',fullPage:true});
+assert(await page.getByRole('heading',{name:'炼气一层',exact:true}).count());
+const initial=await page.evaluate(()=>window.__moxiu.state.rift.toCultivation);
+await page.getByRole('button',{name:'修仙界',exact:false}).first().click();
+assert.equal(await page.evaluate(()=>window.__moxiu.state.side),'modern');assert.equal(await page.evaluate(()=>window.__moxiu.state.rift.toCultivation),initial);
+await page.screenshot({path:'test-results/界门确认.png',fullPage:true});
+await page.getByRole('button',{name:'确认背包并开启界门'}).click();
+assert(await page.getByRole('heading',{name:'穿行两界'}).isVisible());
+await page.screenshot({path:'test-results/transition.png'});
+await page.getByRole('heading',{name:'已抵达修仙界'}).waitFor();
+assert.equal(await page.evaluate(()=>window.__moxiu.state.rift.toCultivation),initial-1);
+await page.getByRole('button',{name:'返回首页',exact:true}).click();await page.screenshot({path:'test-results/修仙首页.png',fullPage:true});
+const viewResults=await page.evaluate(async()=>{
+const {VIEWS}=await import('/src/ui/app.js');const {ctx}=await import('/src/ui/app.js');const s=window.__moxiu.state;const rows=[];
+for(const side of ['cultivation','modern']){s.side=side;for(const v of VIEWS[side]){try{const body=v.render(s,ctx);rows.push({side,id:v.id,ok:body instanceof HTMLElement});}catch(e){rows.push({side,id:v.id,error:e.message});}}}s.side='cultivation';return rows;
+});assert(viewResults.every(r=>r.ok),JSON.stringify(viewResults));
+await page.evaluate(async()=>{const m=await import('/src/ui/app.js');m.scheduleRender();});
+await page.getByRole('button',{name:'◈ 界门',exact:true}).click();
+await page.evaluate(async()=>{const s=window.__moxiu.state;const {addItem}=await import('/src/systems/inventory.js');addItem(s,'gufaqi',2);(await import('/src/ui/app.js')).scheduleRender()});
+await page.getByText('暂时无法穿越',{exact:true}).waitFor();assert(await page.getByText('暂时无法穿越',{exact:true}).isDisabled());
+await page.evaluate(async()=>{window.__moxiu.state.inventory=[];(await import('/src/ui/app.js')).scheduleRender()});
+await page.getByRole('button',{name:'确认背包并开启界门'}).click();await page.getByRole('heading',{name:'已抵达现代都市'}).waitFor();await page.getByRole('button',{name:'返回首页',exact:true}).click();
+await page.getByRole('button',{name:'◈ 界门',exact:true}).click();assert(await page.getByText('暂时无法穿越',{exact:true}).isDisabled());
+await page.evaluate(async()=>{(await import('/src/ui/dom.js')).showToast('提示接口验证','warn')});assert(await page.getByText('提示接口验证',{exact:true}).isVisible());
+await page.locator('#toast-root').evaluate(el=>el.replaceChildren());
+await page.setViewportSize({width:390,height:844});
+await page.locator('#mobilenav').getByRole('button',{name:'首页'}).click();await page.screenshot({path:'test-results/手机首页.png',fullPage:true});
+assert.equal(await page.locator('#mobilenav button').count(),5);
+for(const name of ['更多','修行','界门','首页']) {await page.locator('#mobilenav').getByRole('button',{name,exact:false}).click(); assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`overflow ${name}`);}
+await page.locator('#mobilenav').getByRole('button',{name:'更多'}).click();assert(await page.getByRole('button',{name:'轮回',exact:true}).count());
+await page.evaluate(async()=>{const {modal,h}=await import('/src/ui/dom.js');modal({title:'强制浮层验证',sticky:true,body:h('p',{text:'保持显示'}),actions:[{label:'完成浮层测试'}]});});
+await page.locator('.overlay').last().click({position:{x:2,y:2}});assert(await page.getByRole('heading',{name:'强制浮层验证'}).isVisible());await page.getByRole('button',{name:'完成浮层测试'}).click();
+assert.deepEqual(errors,[]);
+console.log(JSON.stringify({views:viewResults.length,checks:'首页、世界按钮不扣次数、空包穿越、1.6秒过渡、抵达、超重、次数耗尽、提示、五入口、更多、手机无溢出、强制浮层',errors},null,2));
+await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

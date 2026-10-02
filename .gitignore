@@ -4,3 +4,6 @@ node_modules/
 dist/
 build/
 *.tmp
+
+# 本地浏览器验证产物
+test-results/

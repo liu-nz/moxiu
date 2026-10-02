@@ -33,9 +33,7 @@ export function renderHeader(state, ctx) {
     class: state.side === side ? 'on' : '',
     onclick: () => {
       if (state.side === side) return;
-      const res = cross(state, side);
-      if (!res.ok) showToast(res.reason, 'warn');
-      else ctx.rerender();
+      ctx.navigate('gate');
     },
   },
     h('span', { text: SIDE_NAME[side] }),
@@ -87,7 +85,7 @@ export function renderHeader(state, ctx) {
         h('div.brand-sub', { text: '两界穿越 · 修仙经营' }),
       ),
     ),
-    h('div.worldtabs', null, tab(SIDE.CULTIVATION), tab(SIDE.MODERN)),
+    h('div.worldtabs', null, tab(SIDE.CULTIVATION), tab(SIDE.MODERN), h('button.btn.header-gate', {text:'◈ 界门',onclick:()=>ctx.navigate('gate')})),
     h('div.topres', null,
       h('div.res', null,
         h('span.res-k', { text: '灵石' }),
@@ -112,7 +110,7 @@ export function renderHeader(state, ctx) {
         ),
         h('span.res-sub', { live: 'riftCountdown' }),
       ),
-      timeCtl,
+      h('details.header-settings', null,h('summary', {text:'设置'}),h('div.settings-popover',null,timeCtl,h('button.btn.btn-block.mt-2',{text:'人物与存档',onclick:()=>ctx.navigate('character')}))),
     ),
   );
 

@@ -20,12 +20,12 @@ export const TUTORIAL_STEPS = [
   },
   {
     id: 'buy', title: '第一次进货',
-    text: '打开「商城」，用人民币买几件现代货。注意看行情箭头——↑↑ 的东西在对面世界最值钱。',
+    text: '打开「商城」，用人民币买几件现代货。先在界门查看目的地行情，再决定进货。',
     done: (s) => s.inventory.some((e) => ITEM_MAP[e.itemId]?.origin === 'modern'),
   },
   {
     id: 'cross', title: '第一次跨界',
-    text: '每日界潮已至。点顶部的「修仙界」，带着货穿过界门。载重有限，别贪。',
+    text: '每日界潮已至。进入「界门」，确认背包后开启穿越。载重有限，别贪。',
     done: (s) => s.stats.crossings >= 1,
   },
   {
