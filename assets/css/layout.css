@@ -1,0 +1,243 @@
+/* ============================================================
+   《墨修》layout.css —— 顶部世界切换 + PC 三栏 / 移动单列
+   ============================================================ */
+
+/* ---------- 启动屏 ---------- */
+.bootscreen{
+  position:fixed;inset:0;z-index:1000;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  background:var(--bg);
+}
+.bootmark{
+  font-family:var(--font-serif);
+  font-size:34px;letter-spacing:.32em;text-indent:.32em;
+  color:var(--ink);
+}
+.bootmsg{
+  font-size:12px;color:var(--ink-3);letter-spacing:.16em;
+  animation:bootpulse 1.6s ease-in-out infinite;
+}
+@keyframes bootpulse{0%,100%{opacity:.45;}50%{opacity:1;}}
+
+/* ---------- 顶部栏 ---------- */
+.topbar{
+  position:sticky;top:0;z-index:600;
+  background:var(--bg);
+  border-bottom:1px solid var(--line-ink);
+}
+.topbar-inner{
+  max-width:1440px;margin:0 auto;
+  display:flex;align-items:stretch;gap:var(--sp-4);
+  padding:0 var(--sp-5);
+  min-height:56px;
+}
+.brand{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding-right:var(--sp-4);
+  border-right:1px solid var(--line);
+  flex:0 0 auto;
+}
+.brand-mark{
+  font-family:var(--font-serif);
+  font-size:22px;font-weight:600;letter-spacing:.08em;line-height:1;
+}
+.brand-sub{font-size:10px;color:var(--ink-3);letter-spacing:.16em;line-height:1.3;}
+
+/* 世界切换 Tab —— GDD 18：主界面顶部“修仙界 / 现代都市”两个大按钮 */
+.worldtabs{display:flex;align-items:stretch;flex:0 0 auto;}
+.worldtab{
+  appearance:none;border:0;background:none;cursor:pointer;
+  font-family:var(--font-serif);font-size:15px;letter-spacing:.1em;
+  color:var(--ink-3);padding:0 var(--sp-5);
+  border-bottom:2px solid transparent;
+  border-right:1px solid var(--line);
+  transition:color var(--dur),background var(--dur);
+  position:relative;
+}
+.worldtab:first-child{border-left:1px solid var(--line);}
+.worldtab:hover{color:var(--ink);background:var(--bg-sunken);}
+.worldtab.on{
+  color:var(--inv-ink);background:var(--ink);
+  border-bottom-color:var(--ink);
+}
+.worldtab .wt-sub{display:block;font-family:var(--font-sans);font-size:10px;letter-spacing:.06em;opacity:.72;}
+
+/* 顶部资源与界潮 */
+.topres{
+  display:flex;align-items:center;gap:var(--sp-5);
+  margin-left:auto;flex-wrap:wrap;justify-content:flex-end;
+}
+.res{display:flex;flex-direction:column;line-height:1.25;}
+.res-k{font-size:10px;color:var(--ink-3);letter-spacing:.1em;}
+.res-v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;}
+.res-sub{font-size:10px;color:var(--ink-3);font-family:var(--font-mono);}
+
+.rift-chip{
+  display:flex;flex-direction:column;align-items:flex-end;gap:2px;
+  border-left:1px solid var(--line);padding-left:var(--sp-5);
+}
+.rift-dots{display:flex;gap:3px;}
+.rift-dot{
+  width:9px;height:9px;border:1px solid var(--line-ink);
+  display:block;background:var(--bg);
+}
+.rift-dot.full{background:var(--ink);}
+.rift-dot.cur{border-width:2px;}
+.rift-dot.part{background:repeating-linear-gradient(45deg,var(--ink) 0 2px,transparent 2px 4px);}
+
+.speedctl{display:flex;align-items:center;gap:2px;border-left:1px solid var(--line);padding-left:var(--sp-4);}
+.speedctl .btn{padding:3px 7px;font-size:10px;font-family:var(--font-mono);}
+
+/* ---------- 三栏 ---------- */
+.stage{
+  max-width:1440px;margin:0 auto;
+  display:grid;
+  grid-template-columns:290px minmax(0,1fr) 320px;
+  gap:var(--sp-5);
+  padding:var(--sp-5);
+  align-items:start;
+}
+.col{min-width:0;display:flex;flex-direction:column;gap:var(--sp-5);}
+.col-left,.col-right{position:sticky;top:76px;max-height:calc(100vh - 100px);}
+.col-left>.panel,.col-right>.panel{flex:0 0 auto;}
+
+/* 中栏视图导航 */
+.viewtabs{
+  display:flex;gap:0;border:1px solid var(--line-ink);
+  overflow:hidden;
+}
+
+/* 视图内层分页 */
+.subtabs{
+  display:flex;gap:0;border:1px solid var(--line-2);
+  background:var(--bg-raised);
+}
+.subtab{
+  appearance:none;border:0;background:none;cursor:pointer;
+  flex:1 1 auto;padding:6px 4px;
+  font-size:12px;letter-spacing:.06em;color:var(--ink-3);
+  border-right:1px solid var(--line);
+  transition:background var(--dur),color var(--dur);
+}
+.subtab:last-child{border-right:0;}
+.subtab:hover{background:var(--bg-sunken);color:var(--ink);}
+.subtab.on{background:var(--ink);color:var(--inv-ink);}
+.viewtab{
+  appearance:none;border:0;background:none;cursor:pointer;
+  flex:1 1 auto;padding:9px 6px;
+  font-size:12px;letter-spacing:.08em;color:var(--ink-2);
+  border-right:1px solid var(--line);
+  transition:background var(--dur),color var(--dur);
+  font-family:var(--font-serif);
+}
+.viewtab:last-child{border-right:0;}
+.viewtab:hover{background:var(--bg-sunken);color:var(--ink);}
+.viewtab.on{background:var(--ink);color:var(--inv-ink);}
+.viewtab:disabled{color:var(--ink-4);cursor:not-allowed;background:var(--bg-sunken);}
+
+/* ---------- 日志 ---------- */
+.log-list{display:flex;flex-direction:column-reverse;gap:0;}
+.log-item{
+  padding:7px 0;border-bottom:1px dashed var(--line);
+  font-size:12px;line-height:1.5;
+}
+.log-item:first-child{border-top:1px dashed var(--line);}
+.log-item .lt{font-family:var(--font-mono);font-size:10px;color:var(--ink-4);margin-right:6px;}
+.log-item.hl{background:var(--bg-sunken);padding-left:6px;padding-right:6px;}
+.log-item.warn .lm{color:var(--rise);}
+.log-item.good .lm{color:var(--fall);}
+
+/* ---------- 卡片列表（商品/装备/功法通用行） ---------- */
+.rowitem{
+  display:flex;align-items:center;gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-4);
+  border-bottom:1px solid var(--line);
+}
+.rowitem:last-child{border-bottom:0;}
+.rowitem:hover{background:var(--bg-raised);}
+.rowitem-main{flex:1 1 auto;min-width:0;}
+.rowitem-title{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;}
+.rowitem-name{font-size:13px;font-weight:600;}
+.rowitem-meta{font-size:11px;color:var(--ink-3);margin-top:2px;}
+.rowitem-act{flex:0 0 auto;display:flex;align-items:center;gap:var(--sp-2);}
+.rowitem-price{font-family:var(--font-mono);font-size:12px;text-align:right;}
+
+/* ---------- 移动端底部导航 ---------- */
+.mobilenav{
+  display:none;
+  position:fixed;left:0;right:0;bottom:0;z-index:650;
+  background:var(--bg);border-top:1px solid var(--line-ink);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.mobilenav-inner{display:flex;overflow-x:auto;scrollbar-width:none;}
+.mobilenav-inner::-webkit-scrollbar{display:none;}
+.mobilenav button{
+  appearance:none;border:0;background:none;cursor:pointer;
+  flex:0 0 auto;min-width:58px;padding:9px 8px 10px;
+  font-size:11px;color:var(--ink-3);font-family:var(--font-serif);
+  border-right:1px solid var(--line);
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+}
+.mobilenav button:last-child{border-right:0;}
+.mobilenav button.on{background:var(--ink);color:var(--inv-ink);}
+.mobilenav .mn-dot{width:4px;height:4px;background:currentColor;border-radius:50%;opacity:.6;}
+
+/* ---------- 引导 ---------- */
+.guidebar{
+  border:1px solid var(--ink);border-left:4px solid var(--ink);
+  background:var(--bg-raised);padding:var(--sp-3) var(--sp-4);
+  display:flex;gap:var(--sp-4);align-items:flex-start;
+}
+.guidebar-main{flex:1 1 auto;}
+.guidebar-step{font-family:var(--font-mono);font-size:10px;color:var(--ink-3);letter-spacing:.1em;}
+
+/* ---------- 响应式 ---------- */
+@media (max-width:1180px){
+  .stage{grid-template-columns:250px minmax(0,1fr);}
+  .col-right{grid-column:1 / -1;position:static;max-height:none;}
+  .col-right{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--sp-5);}
+  .col-right>.panel{margin:0;}
+}
+@media (max-width:860px){
+  body{padding-bottom:64px;}
+  .stage{
+    grid-template-columns:minmax(0,1fr);
+    padding:var(--sp-3);
+    gap:var(--sp-3);
+  }
+  .col{gap:var(--sp-3);}
+  .col-left,.col-right{position:static;max-height:none;display:flex;}
+  .col-right{display:flex;grid-template-columns:none;}
+  .mobilenav{display:block;}
+
+  .topbar-inner{flex-wrap:wrap;padding:0 var(--sp-3);gap:0;}
+  .brand{padding:var(--sp-2) var(--sp-3) var(--sp-2) 0;border-right:0;min-height:auto;}
+  .brand-mark{font-size:18px;}
+  .brand-sub{display:none;}
+  .worldtabs{order:3;width:100%;border-top:1px solid var(--line);}
+  .worldtab{flex:1 1 0;padding:8px 4px;font-size:14px;border-left:0 !important;border-right:0;}
+  .worldtab+.worldtab{border-left:1px solid var(--line) !important;}
+  .worldtab .wt-sub{display:none;}
+  .topres{
+    margin-left:auto;gap:var(--sp-3);padding:var(--sp-2) 0;
+  }
+  .res-v{font-size:13px;}
+  .res-k{font-size:9px;}
+  .rift-chip{padding-left:var(--sp-3);}
+  .speedctl{padding-left:var(--sp-3);}
+  .speedctl .btn{padding:2px 5px;}
+  .viewtabs{flex-wrap:wrap;}
+  .viewtab{flex:1 1 30%;font-size:11px;padding:8px 2px;border-bottom:1px solid var(--line);}
+  .rowitem{padding:var(--sp-3);}
+  .modal{max-height:92vh;}
+  .toast-root{bottom:76px;}
+}
+@media (max-width:420px){
+  .res-sub{display:none;}
+  .brand-mark{font-size:16px;}
+}
+
+/* 打印/无动画偏好 */
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001s !important;transition-duration:.001s !important;}
+}

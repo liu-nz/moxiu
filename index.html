@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>墨修 · 两界穿越修仙经营挂机</title>
+<meta name="description" content="《墨修》两界穿越修仙经营挂机游戏 —— 表世界修仙界 · 里世界现代都市 · 每日界潮双向跨界倒卖">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/layout.css">
+</head>
+<body>
+
+<!-- 启动屏：启动流程是异步的（先试云端存档，再回落本地） -->
+<div id="boot-screen" class="bootscreen">
+  <div class="bootmark">墨修</div>
+  <div class="bootmsg" id="boot-msg">正在载入…</div>
+</div>
+
+<!-- 顶部：世界切换 -->
+<header class="topbar" id="topbar"></header>
+
+<!-- 主体三栏 -->
+<main class="stage">
+  <aside class="col col-left" id="col-left"></aside>
+  <section class="col col-mid" id="col-mid"></section>
+  <aside class="col col-right" id="col-right"></aside>
+</main>
+
+<!-- 移动端底部导航 -->
+<nav class="mobilenav" id="mobilenav"></nav>
+
+<!-- 浮层：突破 / 结算 / 引导 -->
+<div class="overlay-root" id="overlay-root"></div>
+
+<!-- 全局提示 -->
+<div class="toast-root" id="toast-root"></div>
+
+<!-- 启动兜底：ES Module 在 file:// 协议下会被浏览器拦截 -->
+<div id="boot-fallback" style="display:none;max-width:640px;margin:64px auto;padding:0 24px;font-family:-apple-system,'PingFang SC',sans-serif;color:#141414;line-height:1.7">
+  <h1 style="font-family:'Songti SC',serif;font-size:24px;margin:0 0 16px">墨修 · 未能启动</h1>
+  <p style="font-size:14px">本作使用原生 ES Module 编写，浏览器不允许通过 <code>file://</code> 直接打开模块脚本。</p>
+  <p style="font-size:14px;margin-top:16px">请用任意静态服务器打开项目根目录，例如：</p>
+  <pre style="background:#f7f7f6;border:1px solid #e6e5e2;padding:12px;font-size:13px;overflow:auto">cd moxiu
+python3 -m http.server 8080
+# 然后访问 http://localhost:8080</pre>
+  <p style="font-size:13px;color:#8a8a8a;margin-top:16px">若你正在 WorkBuddy 的内置预览面板中查看，可忽略本提示。</p>
+</div>
+<script>
+  window.__moxiu_booted = false;
+  window.addEventListener('error', function (e) {
+    if (!window.__moxiu_booted) {
+      var el = document.getElementById('boot-fallback');
+      if (el) el.style.display = 'block';
+    }
+  }, true);
+  setTimeout(function () {
+    if (!window.__moxiu_booted) {
+      var el = document.getElementById('boot-fallback');
+      if (el) el.style.display = 'block';
+    }
+  }, 2500);
+</script>
+
+<script type="module" src="src/main.js"></script>
+<noscript><p style="padding:24px">《墨修》需要启用 JavaScript 才能运行。</p></noscript>
+</body>
+</html>
