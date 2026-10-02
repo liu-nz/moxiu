@@ -143,7 +143,8 @@ export function kv(label, value) {
 }
 
 /* ---------------- Toast ---------------- */
-export function showToast({ message, kind }) {
+export function showToast(payload, tone = '') {
+  const { message, kind } = typeof payload === 'string' ? {message:payload,kind:tone} : (payload || {});
   const root = document.getElementById('toast-root');
   if (!root) return;
   const el = h('div.toast', { class: kind || '', text: message });
@@ -161,7 +162,24 @@ export function openOverlay(node) {
   if (!root) return;
   const wrap = h('div.overlay', null, node);
   wrap.addEventListener('click', (e) => { if (e.target === wrap && wrap.dataset.sticky !== '1') closeOverlay(); });
+  wrap.dataset.sticky = node.dataset.sticky || '0';
+  const previousFocus = document.activeElement;
+  node.setAttribute('role', 'dialog');
+  node.setAttribute('aria-modal', 'true');
+  node.tabIndex = -1;
+  wrap.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && wrap.dataset.sticky !== '1') { e.preventDefault(); closeOverlay(); }
+    if (e.key === 'Tab') {
+      const focusable = [...node.querySelectorAll('button:not(:disabled), input, select, textarea, [tabindex="0"]')];
+      const first = focusable[0], last = focusable.at(-1);
+      if (!first) { e.preventDefault(); node.focus(); }
+      else if (e.shiftKey && (document.activeElement === first || document.activeElement === node)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && (document.activeElement === last || document.activeElement === node)) { e.preventDefault(); first.focus(); }
+    }
+  });
+  wrap._previousFocus = previousFocus;
   root.appendChild(wrap);
+  node.focus();
   return wrap;
 }
 
@@ -169,7 +187,7 @@ export function closeOverlay() {
   const root = document.getElementById('overlay-root');
   if (!root) return;
   const last = root.lastElementChild;
-  if (last) last.remove();
+  if (last) { const previous = last._previousFocus; last.remove(); if (previous?.isConnected) previous.focus(); }
 }
 
 export function closeAllOverlays() {

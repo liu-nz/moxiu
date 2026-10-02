@@ -113,6 +113,13 @@ export function switchPath(state, pathId) {
   if (!p) return { ok: false, reason: '没有这条道途。' };
   if (state.path === pathId) return { ok: false, reason: '你已在此道。' };
 
+  if (!state.path) {
+    state.path = pathId;
+    logGood(state, `初次择道：「${p.name}」。`);
+    emit(EV.STATE);
+    return { ok: true, free: true, first: true };
+  }
+
   const st = pathSwitchStatus(state);
   if (st.freeReady) {
     state.reincarnation.freePathSwitchAt = state.world.clockMs;
