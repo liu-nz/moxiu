@@ -10,7 +10,7 @@ export const LIFESTYLE = [
   {
     id: 'housing', name: '居所', accent: '居',
     desc: '住得好，休息效率高。离线收益直接受益。',
-    effectText: '离线收益 +8% / 级',
+    effectText: '离线修为与被动收入 +8% / 级（工资、商业、租金）',
     perLevel: 0.08, maxLevel: 10,
     levels: ['合租单间', '老破小一居', '精装公寓', '地铁口两居', '江景大平层', '独栋别墅',
       '带院子的宅子', '半山宅邸', '整层写字楼改的住所', '你自己盖的楼'],

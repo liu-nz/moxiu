@@ -8,10 +8,10 @@
 import { TRADEHOUSE, LISTING_FEE } from '../data/tradehouse.js';
 import { ITEM_MAP, currencyOf, CURRENCY_NAME } from '../data/items.js';
 import { QUALITY_MAP } from '../data/dungeons.js';
-import { sellPrice } from './market.js';
+import { sellPrice, recordTrade } from './market.js';
 import { computeAttrs, sectMods } from './character.js';
 import { lifestyleEffects } from './lifestyle.js';
-import { inventoryRows, removeEntry, addItem } from './inventory.js';
+import { inventoryRows, removeEntry, addItem, validQuantity } from './inventory.js';
 import { countSold, earn } from './daily.js';
 import { guildMods, chamberJoined } from './guild.js';
 import { logGood, toast } from './log.js';
@@ -72,13 +72,15 @@ export function expandSlots(state) {
 
 /** 上架 */
 export function list(state, entryUid, qty, ratio, currency) {
+  if (!validQuantity(qty) || !Number.isFinite(ratio) || !['stone', 'cny'].includes(currency)) return { ok: false, reason: '数量、定价或货币不合法。' };
   const t = th(state);
   if (t.listings.length >= t.slots) return { ok: false, reason: '摊位已满，先扩充或等货卖掉。' };
 
   const row = inventoryRows(state).find((r) => r.uid === entryUid);
   if (!row || !ITEM_MAP[row.itemId]) return { ok: false, reason: '这件东西不能上架。' };
 
-  const n = Math.min(qty, row.qty);
+  if (qty > row.qty) return { ok: false, reason: '背包数量不足。' };
+  const n = qty;
   if (n <= 0) return { ok: false, reason: '数量不合法。' };
 
   const r = clamp(ratio, TRADEHOUSE.minRatio, TRADEHOUSE.maxRatio);
@@ -86,10 +88,10 @@ export function list(state, entryUid, qty, ratio, currency) {
   const price = Math.max(1, Math.round(ref * r));
 
   const fee = Math.round(price * n * listingFeeRate(state));
-  if (state.currency.stone < fee) return { ok: false, reason: `上架税费不足（需 ${fmtInt(fee)} 灵石）。` };
+  if (state.currency[currency] < fee) return { ok: false, reason: `上架税费不足（需 ${fmtInt(fee)} ${CURRENCY_NAME[currency]}）。` };
 
   removeEntry(state, entryUid, n);
-  state.currency.stone -= fee;
+  state.currency[currency] -= fee;
 
   t.listings.push({
     uid: uid('ls'),
@@ -151,6 +153,7 @@ export function tickTradehouse(state, dtMs) {
       t.earned[l.currency] = (t.earned[l.currency] || 0) + revenue;
       t.totalSold += canSell;
       state.stats.profit = (state.stats.profit || 0) + revenue;
+      recordTrade(state, {type:'sell', itemId:l.itemId, qty:canSell, amount:revenue, currency:l.currency, channel:'交易行'});
       countSold(state, canSell);
       earn(state, l.currency, revenue);
       if (l.currency === 'stone') state.stats.maxStone = Math.max(state.stats.maxStone || 0, state.currency.stone);

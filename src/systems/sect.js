@@ -17,6 +17,7 @@ import { addItem, countOf, removeItem } from './inventory.js';
 import { cultivationRate, computeAttrs, combatPower, sectMods } from './character.js';
 import { logGood, logHl, logWarn, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
+import { earn } from './daily.js';
 import { fmtInt } from '../core/util.js';
 
 function sc(state) {
@@ -288,6 +289,7 @@ export function grantStipend(state) {
   const bonus = state.player.stage >= 30 ? 2 : 1;
   const amount = Math.round(base * bonus);
   state.currency.stone += amount;
+  earn(state, 'stone', amount);
   state.stats.maxStone = Math.max(state.stats.maxStone || 0, state.currency.stone);
   logGood(state, `宗门月俸：灵石 +${fmtInt(amount)}。`);
   return amount;

@@ -8,8 +8,8 @@ import { ITEM_MAP, currencyOf, CURRENCY_NAME } from '../data/items.js';
 import { BUSINESS } from '../data/jobs.js';
 import { projectEffects } from '../data/projects.js';
 import { sideFactor, SIDE } from '../core/state.js';
-import { sellPrice } from './market.js';
-import { inventoryRows, removeEntry } from './inventory.js';
+import { quoteSell, recordTrade } from './market.js';
+import { inventoryRows, removeEntry, validQuantity } from './inventory.js';
 import { computeAttrs } from './character.js';
 import { dutyMultiplier } from './companion.js';
 import { countSold, earn } from './daily.js';
@@ -88,10 +88,11 @@ export function tickEstate(state, dtMs) {
   const rent = rentPerHour(state) * hours;
   if (rent > 0) {
     state.currency.cny += rent;
+    state.stats.passiveCny = (state.stats.passiveCny || 0) + rent;
     earn(state, 'cny', rent);
     state.stats.maxCny = Math.max(state.stats.maxCny || 0, state.currency.cny);
   }
-  if (state.estate.autoSell && state.estate.shops > 0) {
+  if (state.side === SIDE.MODERN && state.estate.autoSell && state.estate.shops > 0) {
     state.estate.sellAcc = (state.estate.sellAcc || 0) + hours;
     const projectBoost = 1 + (projectEffects(state).shopThroughput || 0);
     const capacity = SHOP.throughputPerHour * state.estate.shops
@@ -106,7 +107,8 @@ export function tickEstate(state, dtMs) {
 
 /** 店铺自动售货：把背包里的外来货按当日价卖出（渠道抽成） */
 export function autoSell(state, limit) {
-  const world = state.side;
+  if (state.side !== SIDE.MODERN || !validQuantity(limit)) return { ok: false, sold: 0 };
+  const world = SIDE.MODERN;
   const attrs = computeAttrs(state);
   const rows = inventoryRows(state).filter((r) => ITEM_MAP[r.itemId] && ITEM_MAP[r.itemId].origin !== world);
   if (!rows.length) return { ok: false, sold: 0 };
@@ -116,16 +118,18 @@ export function autoSell(state, limit) {
   for (const r of rows) {
     if (sold >= limit) break;
     const n = Math.min(r.qty, limit - sold);
-    const unit = sellPrice(state, world, r.itemId, r.quality, attrs) * (1 - SHOP.channelFee);
+    const amount = quoteSell(state, world, r.itemId, n, r.quality, attrs).total * (1 - SHOP.channelFee);
     removeEntry(state, r.uid, n);
-    state.currency[cur] += unit * n;
+    state.currency[cur] += amount;
     state.market.sold[world][r.itemId] = (state.market.sold[world][r.itemId] || 0) + n;
     sold += n;
-    revenue += unit * n;
+    revenue += amount;
+    recordTrade(state, { type: 'sell', itemId: r.itemId, qty: n, currency: cur, amount, channel: '店铺' });
   }
   if (sold > 0) {
     state.stats.tradeCount += 1;
     state.stats.profit += revenue;
+    state.stats.maxCny = Math.max(state.stats.maxCny || 0, state.currency.cny);
     countSold(state, sold);
     earn(state, cur, revenue);
     emit(EV.STATE);
@@ -133,11 +137,20 @@ export function autoSell(state, limit) {
   return { ok: sold > 0, sold, revenue };
 }
 
+export function shopCapacity(state) {
+  return SHOP.throughputPerHour * (1 + dutyMultiplier(state, 'tiexinlan') * 0.5)
+    * (1 + (projectEffects(state).shopThroughput || 0));
+}
+
 export function estateSummary(state) {
   const attrs = computeAttrs(state);
+  const rentMul = (1 + (attrs.shopTraffic || 0)) * (1 + (projectEffects(state).rentMul || 0)) * sideFactor(state, SIDE.MODERN);
   return {
+    shopCapacity: shopCapacity(state),
     list: ESTATES.map((e) => ({
       ...e,
+      actualRent: e.rent * rentMul,
+      paybackHours: Math.round(e.price * Math.pow(1.12, ownedCount(state, e.id))) / (e.rent * rentMul),
       owned: ownedCount(state, e.id),
       nextPrice: Math.round(e.price * Math.pow(1.12, ownedCount(state, e.id))),
     })),

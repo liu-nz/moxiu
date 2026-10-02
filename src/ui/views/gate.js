@@ -2,9 +2,9 @@
 import { h, panel, bar, kv, openOverlay } from '../dom.js';
 import { SIDE_NAME, otherSide } from '../../core/state.js';
 import { canCross, cross, carryCapacity, msToNextRift, perDirection, bankCap } from '../../systems/rift.js';
-import { inventoryRows, carryWeight, inventoryValue } from '../../systems/inventory.js';
+import { inventoryRows, carryWeight } from '../../systems/inventory.js';
 import { ITEM_MAP } from '../../data/items.js';
-import { hotList, demandArrow, sellPrice } from '../../systems/market.js';
+import { hotList, demandArrow, quotePortfolio } from '../../systems/market.js';
 import { computeAttrs } from '../../systems/character.js';
 import { fmtInt, fmtKg, fmtDuration } from '../../core/util.js';
 
@@ -41,7 +41,7 @@ export function startCrossing(s, ctx, destination) {
 export function renderGate(s,ctx) {
   const to = otherSide(s.side), check=canCross(s,to), weight=carryWeight(s), cap=carryCapacity(s);
   const rows=inventoryRows(s), attrs=computeAttrs(s);
-  const estimate=inventoryValue(s,to,(state,world,id,q)=>sellPrice(state,world,id,q,attrs));
+  const estimate=quotePortfolio(s,to,s.inventory.filter(e=>ITEM_MAP[e.itemId] && ITEM_MAP[e.itemId].origin!==to),attrs).total;
   const remain=to==='cultivation'?s.rift.toCultivation:s.rift.toModern;
   const bag=panel('跨界背包',`${fmtKg(weight)} / ${cap} kg`,
     h('p.t-sm.t-dim.mb-3',{text:'确认本次随身携带的全部物品。贸易商品占载重，材料与消耗品不占界门载重。'}),
@@ -51,7 +51,7 @@ export function renderGate(s,ctx) {
   );
   const market=panel('当日市场摘要',`目的地 · ${SIDE_NAME[to]}`,
     hotList(s,to,3).map(x=>{const arrow=demandArrow(x.demand);return kv(x.item.name,h('span',{class:arrow.cls,text:`${arrow.sym} ${arrow.label}`}));}),
-    kv('背包当前估价',`${to==='modern'?'¥':''}${fmtInt(estimate)}${to==='cultivation'?' 灵石':''}`),
+    kv('跨界货整批估价',`${to==='modern'?'¥':''}${fmtInt(estimate)}${to==='cultivation'?' 灵石':''}`),
     h('p.t-xs.t-dim.mt-2',{text:'估价使用目的地当前售价与品质、角色加成；仅贸易商品计价。实际成交会受销量饱和、跨日行情等影响，穿越不会自动售出。'}),
   );
   return h('div.flex-col.gap-4',null,
