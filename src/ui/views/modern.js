@@ -6,7 +6,25 @@ import { h, panel, panelFlush, showToast } from '../dom.js';
 import { JOBS, JOB_MAP, jobRate, jobUpgradeCost, BUSINESS } from '../../data/jobs.js';
 import { chooseJob, upgradeJob, upgradeBusiness, toggleWork, totalIncomePerHour, jobIncomePerHour, businessIncomePerHour, investmentPreview } from '../../systems/modern.js';
 import { fmtInt, fmtPct } from '../../core/util.js';
+import { growthPanel, investmentPanel } from './progression.js';
+import { investmentBudget } from '../../systems/finance.js';
 import { SIDE } from '../../core/state.js';
+
+function confirmCareerChange(state, ctx, id) {
+  const previousLevel = state.modern.jobLevel;
+  const old = state.modern.job, level = old && old !== id ? Math.max(1, state.modern.jobLevel - 1) : state.modern.jobLevel;
+  const next = { ...state, modern: { ...state.modern, job: id, jobLevel: level } };
+  ctx.modal({ title: '转行预览', subtitle: JOB_MAP[id].name, body: h('div', null,
+    h('p.t-sm', { text: `职级 Lv.${state.modern.jobLevel} → Lv.${level}，当前工资 ¥${jobIncomePerHour(state).toFixed(2)}/时 → ¥${jobIncomePerHour(next).toFixed(2)}/时。` }),
+    h('p.t-xs.t-dim.mt-2', { text: '转行不收费，已有职业转行会降一级。按当前世界、城市加成与上班状态计算。' })),
+    actions: [{ label: '保留职业' }, { label: '确认转行', primary: true, keepOpen: true, onClick: () => {
+      if (state.modern.job !== old || state.modern.jobLevel !== previousLevel) {
+        ctx.closeOverlay(); confirmCareerChange(state, ctx, id); return;
+      }
+      const r = chooseJob(state, id); if (!r.ok) { showToast(r.reason, 'warn'); return; }
+      ctx.closeOverlay(); ctx.rerender();
+    } }] });
+}
 
 export function renderModern(state, ctx) {
   const investment = investmentPreview(state);
@@ -24,7 +42,7 @@ export function renderModern(state, ctx) {
         }),
       ),
       h('div.t-right', null,
-        h('div.t-xs.t-dim', { text: '当前时薪' }),
+        h('div.t-xs.t-dim', { text: '基础时薪' }),
         h('div.t-num.t-lg', { text: curJob ? `¥${jobRate(cur, state.modern.jobLevel).toFixed(1)}` : '¥0' }),
       ),
     ),
@@ -44,7 +62,8 @@ export function renderModern(state, ctx) {
       }),
       cur ? h('button.btn', {
         text: `职级提升（¥${fmtInt(jobUpgradeCost(cur, state.modern.jobLevel))}）`,
-        disabled: state.currency.cny < jobUpgradeCost(cur, state.modern.jobLevel),
+        disabled: !investmentBudget(state, jobUpgradeCost(cur, state.modern.jobLevel)).ok,
+        liveDisabled: 'investment:job',
         onclick: () => { const r = upgradeJob(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
       }) : null,
     ),
@@ -65,7 +84,7 @@ export function renderModern(state, ctx) {
           class: cur === j.id ? '' : 'btn-solid',
           text: cur === j.id ? '已就职' : '入职',
           disabled: cur === j.id,
-          onclick: () => { chooseJob(state, j.id); ctx.rerender(); },
+          onclick: () => { if (cur) confirmCareerChange(state, ctx, j.id); else { const r = chooseJob(state, j.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } },
         }),
       ),
     )),
@@ -84,7 +103,8 @@ export function renderModern(state, ctx) {
         ? h('button.btn', { text: '已满级', disabled: true })
         : h('button.btn.btn-solid', {
           text: `升级商业（¥${fmtInt(BUSINESS.costOf(state.modern.businessLevel))}）`,
-          disabled: state.currency.cny < BUSINESS.costOf(state.modern.businessLevel),
+          disabled: !investmentBudget(state, BUSINESS.costOf(state.modern.businessLevel)).ok,
+          liveDisabled: 'investment:business',
           onclick: () => { const r = upgradeBusiness(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
         }),
     ),
@@ -96,5 +116,5 @@ export function renderModern(state, ctx) {
     }),
   );
 
-  return h('div.flex-col.gap-4', null, head, biz, panel('下一步投资', null, h('div.btn-row', null, h('button.btn', {text:'查看地产与店铺',onclick:()=>ctx.navigate('estate')}), h('button.btn', {text:'市场进货',onclick:()=>ctx.navigate('market')}))), jobs, note);
+  return h('div.flex-col.gap-4', null, head, growthPanel(state, ctx), biz, investmentPanel(state, ctx), panel('下一步投资', null, h('div.btn-row', null, h('button.btn', {text:'查看地产与店铺',onclick:()=>ctx.navigate('estate')}), h('button.btn', {text:'市场进货',onclick:()=>ctx.navigate('market')}))), jobs, note);
 }

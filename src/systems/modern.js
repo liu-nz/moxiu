@@ -11,6 +11,7 @@ import { updateTutorial } from './tutorial.js';
 import { earn } from './daily.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt } from '../core/util.js';
+import { investmentBudget } from './finance.js';
 
 export function jobIncomePerHour(state) {
   if (!state.modern.job || !state.modern.workOn) return 0;
@@ -59,7 +60,8 @@ export function chooseJob(state, jobId) {
 export function upgradeJob(state) {
   if (!state.modern.job) return { ok: false, reason: '先选一份工作。' };
   const cost = jobUpgradeCost(state.modern.job, state.modern.jobLevel);
-  if (state.currency.cny < cost) return { ok: false, reason: `需要 ¥${fmtInt(cost)}。` };
+  const budget = investmentBudget(state, cost);
+  if (!budget.ok) return budget;
   state.currency.cny -= cost;
   state.modern.jobLevel += 1;
   logGood(state, `职级提升至 Lv.${state.modern.jobLevel}，时薪 ¥${jobRate(state.modern.job, state.modern.jobLevel).toFixed(1)}。`);
@@ -71,7 +73,8 @@ export function upgradeBusiness(state) {
   const lv = state.modern.businessLevel;
   if (lv >= BUSINESS.maxLevel) return { ok: false, reason: '商业等级已满。' };
   const cost = BUSINESS.costOf(lv);
-  if (state.currency.cny < cost) return { ok: false, reason: `需要 ¥${fmtInt(cost)}。` };
+  const budget = investmentBudget(state, cost);
+  if (!budget.ok) return budget;
   state.currency.cny -= cost;
   state.modern.businessLevel += 1;
   logGood(state, `商业等级升至 Lv.${state.modern.businessLevel}：进货成本 -${(BUSINESS.buyDiscount(state.modern.businessLevel) * 100).toFixed(0)}%，被动收入 +¥${BUSINESS.passiveIncome(state.modern.businessLevel)}/时。`);

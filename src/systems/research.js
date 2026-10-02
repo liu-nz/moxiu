@@ -6,11 +6,12 @@
 import { PROJECTS, PROJECT_MAP, BRANCHES, projectsOf, RESEARCH_LAB, materialToRP, canResearch, researchEffects } from '../data/research.js';
 import { MATERIAL_MAP } from '../data/items.js';
 import { sideFactor, SIDE } from '../core/state.js';
-import { countOf, removeItem } from './inventory.js';
+import { countOf, removeItem, validQuantity } from './inventory.js';
 import { logGood, logHl, toast } from './log.js';
 import { updateTutorial } from './tutorial.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt } from '../core/util.js';
+import { investmentBudget } from './finance.js';
 
 export function rpPerHour(state) {
   return RESEARCH_LAB.rpPerHour(state.research.labLevel) * sideFactor(state, SIDE.MODERN);
@@ -20,7 +21,8 @@ export function upgradeLab(state) {
   const lv = state.research.labLevel;
   if (lv >= RESEARCH_LAB.maxLevel) return { ok: false, reason: '研究所已至满级。' };
   const cost = RESEARCH_LAB.costOf(lv);
-  if (state.currency.cny < cost) return { ok: false, reason: `需要 ¥${fmtInt(cost)}。` };
+  const budget = investmentBudget(state, cost);
+  if (!budget.ok) return budget;
   state.currency.cny -= cost;
   state.research.labLevel += 1;
   logGood(state, `研究所升级至 Lv.${state.research.labLevel}，研究点产出 ${RESEARCH_LAB.rpPerHour(state.research.labLevel).toFixed(1)} / 时。`);
@@ -43,6 +45,7 @@ export function doResearch(state, id) {
 
 /** 材料兑换研究点 */
 export function exchangeMaterial(state, matId, qty = 1) {
+  if (!validQuantity(qty)) return { ok: false, reason: '兑换数量须为正整数。' };
   const mat = MATERIAL_MAP[matId];
   if (!mat) return { ok: false, reason: '没有这种材料。' };
   const have = countOf(state, matId);

@@ -41,6 +41,9 @@ import { fmtInt, fmtShort, fmtDuration, fmtKg, fmtPct } from '../core/util.js';
 import { RANCH_MAP } from '../data/beasts.js';
 import { researchEffects } from '../data/research.js';
 import { alchemyPlan, nextAlchemyEvent } from '../systems/alchemy.js';
+import { investmentAllowed, investmentBudget } from '../systems/finance.js';
+import { status as cityStatus, targetProject } from '../systems/projects.js';
+import { canResearch } from '../data/research.js';
 import { clockHM } from '../core/clock.js';
 
 /* ------------------------------------------------------------------ */
@@ -155,6 +158,9 @@ function attrsFast(s) {
 function liveValue(key) {
   const s = stateRef;
   if (!s) return '';
+  if (key.startsWith('investment:')) { const [,kind,id] = key.split(':'); return !investmentAllowed(s,kind,id); }
+  if (key.startsWith('projectNotReady:')) return !cityStatus(s,key.split(':')[1])?.canStart;
+  if (key.startsWith('researchNotReady:')) return !canResearch(s,key.split(':')[1]).ok;
   if (key.startsWith('farm')) {
     const [kind, index] = key.split(':'), p = s.farm.plots[Number(index)];
     if (kind === 'farmNotReady') return !p || p.readyAt > s.world.clockMs;
@@ -167,6 +173,8 @@ function liveValue(key) {
     if (kind === 'ranchRatio') return b ? (slot.acc || 0) / b.cycleMs : 0;
   }
   switch (key) {
+    case 'investmentAvailable': return `可投资 ¥${fmtInt(investmentBudget(s,0).available)}`;
+    case 'cityGoalMissing': { const st = targetProject(s); return st ? `还需灵石 ${fmtInt(st.missing.stone)} · 可投资资金缺口 ¥${fmtInt(st.missing.cny)} · 材料 ${st.mats.filter(m=>m.have<m.need).map(m=>`${m.name}缺${m.need-m.have}`).join('、') || '已备齐'}` : '工程目标已完成。'; }
     case 'alchemyAutoStatus': {
       if (!researchEffects(s).autoAlchemy) return '研究「自动炼丹机」后解锁。';
       if (!s.crafting.autoAlchemy) return '机器已暂停。';

@@ -56,13 +56,14 @@ export function craft(state, id, times = 1, { auxId = 'plain', silent = false, r
   if (!validQuantity(times) || times > 100 || !Number.isSafeInteger(reserveStone) || reserveStone < 0) return { ok: false, reason: '炼制次数须为 1–100 的整数，保留灵石须为非负整数。' };
   const initial = recipeStatus(state, id, auxId);
   if (!initial.ok) return { ok: false, reason: initial.reason };
-  let made = 0, failed = 0, extraLoss = 0, attempts = 0;
+  let made = 0, failed = 0, extraLoss = 0, attempts = 0, baseSpent = 0;
   const grades = {}, r = initial.recipe;
   for (let i = 0; i < times; i++) {
     const st = recipeStatus(state, id, auxId);
     if (!st.ok || state.currency.stone - st.cost < reserveStone) break;
     for (const m of st.mats) consumeMaterial(state, m.id, m.need);
     state.currency.stone -= st.cost;
+    baseSpent += st.cost;
     attempts++;
     markSeen(state, id);
     if (rng() < st.rate) {
@@ -83,7 +84,8 @@ export function craft(state, id, times = 1, { auxId = 'plain', silent = false, r
   if (!attempts) return { ok: false, reason: '保留灵石后不足以开炉。' };
   state.crafting.totalPills = (state.crafting.totalPills || 0) + made;
   countCraft(state, attempts);
-  const report = { at: state.world.clockMs, recipeId: id, auxId, attempts, made, failed, grades, extraLoss };
+  state.stats.alchemyStone = (state.stats.alchemyStone || 0) + baseSpent + extraLoss;
+  const report = { at: state.world.clockMs, recipeId: id, auxId, attempts, made, failed, grades, extraLoss, stoneSpent: baseSpent + extraLoss };
   state.crafting.history = [...(state.crafting.history || []), report].slice(-10);
   if (!silent) {
     const message = `「${r.name}」${attempts} 炉：炼成 ${made} 枚，失败 ${failed} 炉${extraLoss ? `，反噬损失 ${fmtInt(extraLoss)} 灵石` : ''}。`;

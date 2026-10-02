@@ -16,7 +16,7 @@
 import { emit, EV } from './bus.js';
 import { tickCultivation, advanceIfReady } from '../systems/cultivation.js';
 import { tickModern } from '../systems/modern.js';
-import { tickEstate } from '../systems/estate.js';
+import { tickEstate, nextShopEvent } from '../systems/estate.js';
 import { tickStamina, tickAutoBattle } from '../systems/dungeon.js';
 import { tickFarm, nextFarmEvent } from '../systems/farm.js';
 import { tickRanch, nextRanchEvent } from '../systems/ranch.js';
@@ -129,7 +129,7 @@ export function advance(state, dtWorld, dtReal = dtWorld / (state.world.speed ||
     for (const buff of state.player.buffs || []) {
       if (buff.until > now) slice = Math.min(slice, buff.until - now);
     }
-    for (const eventMs of [nextFarmEvent(state), nextRanchEvent(state), nextAlchemyEvent(state)]) {
+    for (const eventMs of [nextFarmEvent(state), nextRanchEvent(state), nextAlchemyEvent(state), nextShopEvent(state)]) {
       if (eventMs > 0) slice = Math.min(slice, eventMs);
     }
     state.world.clockMs += slice;

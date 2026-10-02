@@ -322,3 +322,6 @@ button:focus-visible,summary:focus-visible{outline:2px solid var(--jade);outline
 .production-controls p { width:100%; }
 .production-materials { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:10px; }
 .production-choice { text-align:left; white-space:normal; height:auto; padding:12px; display:flex; flex-direction:column; gap:5px; }
+
+.growth-phases { display:flex; flex-wrap:wrap; gap:6px; }
+.engineering-impact { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:10px; }

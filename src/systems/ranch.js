@@ -95,6 +95,7 @@ export function collect(state, index) {
   const qty = slot.pending || 0;
   if (qty <= 0) return { ok: false, reason: '还没有产出。' };
   addItem(state, b.produceId, qty, 'common');
+  state.stats.ranchCollected = (state.stats.ranchCollected || 0) + qty;
   slot.pending = 0;
   logGood(state, `牧场收获：${b.name}产出 ×${qty}。`);
   emit(EV.STATE);
@@ -115,6 +116,7 @@ export function collectAll(state, silent = false) {
     total += slot.pending;
     slot.pending = 0;
   }
+  state.stats.ranchCollected = (state.stats.ranchCollected || 0) + total;
   if (total && !silent) toast(`牧场收获 ${total} 件`, 'good');
   if (total) emit(EV.STATE);
   return { ok: total > 0, total, names };
