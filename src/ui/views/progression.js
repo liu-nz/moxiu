@@ -33,10 +33,11 @@ export function investmentPanel(state, ctx) {
 
 export function offlineProduction(report) {
   const p = report?.production;
-  if (!p || !(p.harvests || p.ranchCollected || p.attempts || p.sold || p.items.length)) return null;
+  if (!p || !(p.harvests || p.ranchCollected || p.attempts || p.sold || p.industryOrders || p.items.length)) return null;
   return h('div.mt-3', null, h('h3.t-sm', { text: '生产与经营明细' }),
     h('p.t-xs.mt-2', { text: `灵田收获 ${p.harvests} 块 · 牧场收取 ${p.ranchCollected} 件 · 炼丹 ${p.attempts} 炉 / 成丹 ${p.pills} 枚` }),
     h('p.t-xs.mt-1', { text: `种子支出 ${fmtInt(p.seedsStone)} 灵石 · 炼丹支出 ${fmtInt(p.alchemyStone)} 灵石（含反噬）` }),
     h('p.t-xs.mt-1', { text: `店铺售出 ${p.sold} 件 · 净回款 ¥${fmtInt(p.shopCny)}` }),
-    p.items.length ? h('details.mt-2', null, h('summary.t-xs', { text: '物资净变化（已扣除消耗和售出）' }), p.items.map(i => h('p.t-xs.mt-1', { text: `${getItem(i.id)?.name || i.id} ${i.delta < 0 ? '−' : '+'}${fmtInt(Math.abs(i.delta))}` }))) : null);
+    p.industryOrders ? h('p.t-xs.mt-1', { text: `公司订单 ${p.industryOrders} 单 · 回款 ¥${fmtInt(p.industryCny)} · 灵石投入 ${fmtInt(p.industryStone)}` }) : null,
+    p.items.length ? h('details.mt-2', null, h('summary.t-xs', { text: '物资净变化（含两界仓库，已扣除消耗和售出）' }), p.items.map(i => h('p.t-xs.mt-1', { text: `${getItem(i.id)?.name || i.id} ${i.delta < 0 ? '−' : '+'}${fmtInt(Math.abs(i.delta))}` }))) : null);
 }

@@ -9,6 +9,7 @@ import { QUALITY_MAP } from '../data/dungeons.js';
 import { getEvent, WORLD_EVENTS } from '../data/worldEvents.js';
 import { BUSINESS } from '../data/jobs.js';
 import { seededRand, weightedPick, clamp } from '../core/util.js';
+import { noteTutorialTrade } from './tutorial.js';
 import { riftDayIndex } from '../core/clock.js';
 
 export const SIDES = ['cultivation', 'modern'];
@@ -189,6 +190,7 @@ export function affordableQuantity(state, world, itemId, limit) {
 
 /** 只保留最近 40 笔，金额始终以该笔货币记录。 */
 export function recordTrade(state, record) {
+  noteTutorialTrade(state, record);
   if (!state.market.history) state.market.history = [];
   state.market.history.unshift({ at: state.world.clockMs, day: state.market.day, ...record });
   state.market.history.length = Math.min(40, state.market.history.length);

@@ -20,7 +20,7 @@ export function applyOffline(state, nowMs) {
   const deltaStat = id => Math.max(0, (state.stats[id] || 0) - (before.stats[id] || 0));
   const items = itemCounts(state);
   report.production = { harvests: deltaStat('harvests'), ranchCollected: deltaStat('ranchCollected'), attempts: deltaStat('crafts'), pills: (state.crafting.totalPills || 0) - before.pills,
-    seedsStone: deltaStat('farmSeedStone'), alchemyStone: deltaStat('alchemyStone'), sold: deltaStat('shopSold'), shopCny: deltaStat('shopCny'),
+    seedsStone: deltaStat('farmSeedStone'), alchemyStone: deltaStat('alchemyStone'), sold: deltaStat('shopSold'), shopCny: deltaStat('shopCny'), industryOrders: deltaStat('industryOrders'), industryCny: deltaStat('industryCny'), industryStone: deltaStat('industryStone'),
     items: [...new Set([...Object.keys(before.items), ...Object.keys(items)])].map(id => ({ id, delta: (items[id] || 0) - (before.items[id] || 0) })).filter(i => i.delta !== 0) };
   const signed = n => `${n < 0 ? '−' : '+'}${fmtInt(Math.abs(n))}`;
   pushLog(state, `离线 ${fmtDuration(elapsedReal)}：修为 ${signed(report.cult)}，灵石 ${signed(report.stone)}，资金 ¥${signed(report.cny)}${result.homeBonus ? `（居所加成 ${(result.homeBonus * 100).toFixed(0)}%）` : ''}。`, 'hl');
@@ -29,6 +29,6 @@ export function applyOffline(state, nowMs) {
 
 function itemCounts(state) {
   const counts = {};
-  for (const e of state.inventory) counts[e.itemId] = (counts[e.itemId] || 0) + e.qty;
+  for (const e of [...state.inventory, ...Object.values(state.cargo?.storage || {}).flat()]) counts[e.itemId] = (counts[e.itemId] || 0) + e.qty;
   return counts;
 }

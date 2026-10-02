@@ -77,7 +77,7 @@ export const TRADE_ITEMS = [
     weight: 0.6,
     capacity: { cultivation: 12, modern: 8 },
     noBuy: ['cultivation'],
-    desc: '只在极寒灵泉里开两天的花。摘下来就开始化，所以必须当天跨界。',
+    desc: '只在极寒灵泉里开两天的花。收获后可保存在背包，供灵元丹、渡劫丹或跨界贸易。',
   },
   {
     id: 'jiuzhuan', name: '九转还魂草', cat: 'herb', origin: 'cultivation',

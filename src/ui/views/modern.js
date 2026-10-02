@@ -8,6 +8,7 @@ import { chooseJob, upgradeJob, upgradeBusiness, toggleWork, totalIncomePerHour,
 import { fmtInt, fmtPct } from '../../core/util.js';
 import { growthPanel, investmentPanel } from './progression.js';
 import { investmentBudget } from '../../systems/finance.js';
+import { industryPanel } from './industries.js';
 import { SIDE } from '../../core/state.js';
 
 function confirmCareerChange(state, ctx, id) {
@@ -116,5 +117,5 @@ export function renderModern(state, ctx) {
     }),
   );
 
-  return h('div.flex-col.gap-4', null, head, growthPanel(state, ctx), biz, investmentPanel(state, ctx), panel('下一步投资', null, h('div.btn-row', null, h('button.btn', {text:'查看地产与店铺',onclick:()=>ctx.navigate('estate')}), h('button.btn', {text:'市场进货',onclick:()=>ctx.navigate('market')}))), jobs, note);
+  return h('div.flex-col.gap-4', null, head, growthPanel(state, ctx), biz, investmentPanel(state, ctx), panel('下一步投资', null, h('div.btn-row', null, h('button.btn', {text:'查看地产与店铺',onclick:()=>ctx.navigate('estate')}), h('button.btn', {text:'市场进货',onclick:()=>ctx.navigate('market')}))), industryPanel(state, ctx), jobs, note);
 }

@@ -12,9 +12,21 @@ import { baseAttrs, stageInfo } from './realms.js';
 export const DIFFICULTIES = [
   { id: 'normal', name: '普通', statMul: 1.00, stamina: 10, rewardMul: 1.0, dropMul: 1.0 },
   { id: 'hard',   name: '困难', statMul: 2.20, stamina: 25, rewardMul: 2.2, dropMul: 1.6 },
-  { id: 'hell',   name: '地狱', statMul: 5.00, stamina: 50, rewardMul: 5.0, dropMul: 2.6 },
+  { id: 'hell',   name: '地狱', statMul: 3.20, stamina: 50, rewardMul: 5.0, dropMul: 2.6 },
 ];
 export const DIFF_MAP = Object.fromEntries(DIFFICULTIES.map((d) => [d.id, d]));
+
+/** 仅作用于首领；战前说明和结算共同引用。 */
+export const DUNGEON_MECHANICS = {
+  bandit: { id: 'ambush', name: '抢攻', rule: '首领前两回合攻击提高40%。', counter: '速度抢先、气血与减伤有助于撑过开场。' },
+  graveyard: { id: 'revive', name: '阴魂复苏', rule: '每回合末首领恢复4%最大气血。', counter: '强光手电阻断复苏；高输出也能在恢复前击败首领。' },
+  swamp: { id: 'poison', name: '叠层瘴毒', rule: '首领命中后叠一层毒，回合末每层造成最大气血2%的伤害，最多三层。', counter: '抗生素免疫瘴毒；闪避阻止叠层，减伤降低毒伤。' },
+  swordtomb: { id: 'reflect', name: '剑阵反击', rule: '每第三回合，首领反弹人物该次伤害的20%；灵兽合击不反弹。', counter: '功法威力达到30%时反弹减半；减伤与灵兽合击可应对。' },
+  purgatory: { id: 'burn', name: '地火灼烧', rule: '每回合末地火造成最大气血2%的伤害。', counter: '防火服隔绝地火；减伤可降低灼烧伤害。' },
+  ruins: { id: 'shield', name: '残阵护盾', rule: '首领入场获得相当于最大气血20%的护盾，先耗尽护盾才能伤及本体。', counter: '阵法传感器或命中加成达到15%时护盾减半；功法威力达到30%时再减半。' },
+  starfall: { id: 'pressure', name: '深海重压', rule: '人物本场攻击降低15%，灵兽合击不受影响。', counter: '人物速度不低于首领时抵消重压；灵兽与速度配装有优势。' },
+  ascension: { id: 'thunder', name: '递增劫雷', rule: '首领大招倍率每四回合增加15个百分点，最高2.1倍。', counter: '持续减伤、吸血与护主灵兽保命；缩短战斗能减少雷劫强度。' },
+};
 
 /** 战前说明与实际科技克制共用，防止提示和结算各写一套。 */
 export const DUNGEON_COUNTERS = [
@@ -107,6 +119,7 @@ export const DUNGEONS = [
 ];
 
 export const DUNGEON_MAP = Object.fromEntries(DUNGEONS.map((d) => [d.id, d]));
+for (const d of DUNGEONS) d.mechanic = DUNGEON_MECHANICS[d.id];
 
 /** 该副本解锁阶段的玩家基础战力（作为敌人数值的基准单位） */
 export function powerUnit(dungeon) {

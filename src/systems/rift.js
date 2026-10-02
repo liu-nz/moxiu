@@ -13,7 +13,7 @@ import { refreshDay } from './market.js';
 import { carryWeight } from './inventory.js';
 import { getEvent } from '../data/worldEvents.js';
 import { projectEffects } from '../data/projects.js';
-import { updateTutorial } from './tutorial.js';
+import { updateTutorial, noteTutorialCross } from './tutorial.js';
 import { rollDaily } from './daily.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtDuration } from '../core/util.js';
@@ -159,6 +159,7 @@ export function cross(state, toSide) {
   if (toSide === SIDE.CULTIVATION) state.rift.toCultivation -= 1;
   else state.rift.toModern -= 1;
 
+  noteTutorialCross(state, toSide);
   state.rift.crossings += 1;
   state.stats.crossings += 1;
   state.rift.lastCrossAt = state.world.clockMs;

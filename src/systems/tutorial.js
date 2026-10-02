@@ -21,18 +21,21 @@ export const TUTORIAL_STEPS = [
   {
     id: 'buy', title: '第一次进货',
     text: '打开「商城」，用人民币买几件现代货。先在界门查看目的地行情，再决定进货。',
-    done: (s) => s.inventory.some((e) => ITEM_MAP[e.itemId]?.origin === 'modern'),
+    done: (s) => !!s.tutorial.journey?.purchasedModern,
   },
   {
     id: 'cross', title: '第一次跨界',
     text: '每日界潮已至。进入「界门」，确认背包后开启穿越。载重有限，别贪。',
-    done: (s) => s.stats.crossings >= 1,
+    done: (s) => !!s.tutorial.journey?.departed,
   },
   {
     id: 'sell', title: '第一次开张',
     text: '在这里，抗生素是解百毒之药。把带来的现代货全部卖掉，换成灵石——那是修仙界唯一认的东西。',
-    done: (s) => s.currency.stone > 0,
+    done: (s) => !!s.tutorial.journey?.outboundSold,
   },
+  { id: 'returnCargo', title: '回程也要带货', text: '出货所得灵石不要全花掉。进货灵米、黄精草或聚气丹，比较现代估价；也可带自产作物回程。无需等待第一茬作物成熟。', done: s => !!s.tutorial.journey?.loadedReturn },
+  { id: 'return', title: '带货回到现代', text: '界潮双向分别计数。确认回程货物与载重，再从界门返回现代。', done: s => !!s.tutorial.journey?.returned },
+  { id: 'reverseSell', title: '完成双向贸易', text: '在现代市场出售回程修仙货。记录本次人民币投入和回款，剩余灵石单独记账；不要把两种货币直接相加。', done: s => !!s.tutorial.journey?.inboundSold },
   {
     id: 'cultivate', title: '引气入体',
     text: '有了灵石，就可以安心修炼了。修为会自动增长，但只有身在修仙界才是满速。',
@@ -40,13 +43,13 @@ export const TUTORIAL_STEPS = [
   },
   {
     id: 'farm', title: '开一块田',
-    text: '洞府里能种灵田。作物一茬比一茬值钱，而且只能种、不能买——这是你在修仙界真正的资产。',
+    text: '洞府里能种灵田。基础灵米和黄精草可进货；百年人参、冰莲和九转还魂草需种植。种植与市场是不同的备料渠道。',
     done: (s) => (s.farm?.plots || []).some((p) => p),
   },
   {
     id: 'dungeon', title: '初试身手',
     text: '炼气三层后，「山贼寨」对你开放。带上合金刀或者别的家伙，去试试你的 Build。',
-    done: (s) => (s.stats.wins || 0) >= 1,
+    done: (s) => Object.values(s.dungeon.cleared || {}).some(n => n > 0),
   },
   {
     id: 'skill', title: 'Build 认知',
@@ -61,7 +64,7 @@ export const TUTORIAL_STEPS = [
   {
     id: 'companion', title: '一个人走不远',
     text: '道侣不是装饰。好感度到「知己」之后，她们会在你下线的时候替你刷副本、炼丹、看店。',
-    done: (s) => Object.values(s.companions || {}).some((c) => (c.affection || 0) >= 40),
+    done: (s) => Object.values(s.companions || {}).some((c) => (c.affection || 0) >= 60),
   },
   {
     id: 'foundation', title: '筑基',
@@ -71,26 +74,49 @@ export const TUTORIAL_STEPS = [
 ];
 
 export function currentStep(state) {
-  const i = state.tutorial.step || 0;
-  return TUTORIAL_STEPS[Math.min(i, TUTORIAL_STEPS.length - 1)] || null;
+  return TUTORIAL_STEPS[state.tutorial.step || 0] || null;
 }
 
+/** 按稳定步骤ID迁移；新增贸易步骤需要真实行为，不从货币余额猜测。 */
 export function updateTutorial(state) {
-  let changed = false;
-  let guard = 0;
-  while (guard++ < TUTORIAL_STEPS.length + 2) {
-    const i = state.tutorial.step || 0;
-    if (i >= TUTORIAL_STEPS.length) break;
-    const step = TUTORIAL_STEPS[i];
-    let ok = false;
-    try { ok = step.done(state); } catch { ok = false; }
-    if (!ok) break;
-    state.tutorial.done[step.id] = true;
-    state.tutorial.step = i + 1;
-    changed = true;
+  const t = state.tutorial;
+  if (!t) return false;
+  if (!t.done || typeof t.done !== 'object') t.done = {};
+  if (t.skipped) { t.step = TUTORIAL_STEPS.length; return false; }
+  const before = t.step;
+  for (const step of TUTORIAL_STEPS) {
+    if (t.done[step.id]) continue;
+    try { if (step.done(state)) t.done[step.id] = true; } catch { /* 旧档缺失数据等待迁移 */ }
   }
-  if (changed) emit(EV.TUTORIAL, { step: state.tutorial.step });
-  return changed;
+  const index = TUTORIAL_STEPS.findIndex(step => !t.done[step.id]);
+  t.step = index < 0 ? TUTORIAL_STEPS.length : index;
+  if (t.step !== before) emit(EV.TUTORIAL, { step: t.step });
+  return t.step !== before;
+}
+
+/** 由成交与穿越调用；中途收入、赠礼和本地回收不能冒充双向贸易。 */
+export function noteTutorialTrade(state, record) {
+  if (!state.tutorial || record.channel !== '市场') return;
+  const item = ITEM_MAP[record.itemId];
+  if (!item) return;
+  const j = state.tutorial.journey ??= {};
+  if (j.inboundSold) return;
+  if (record.type === 'buy' && record.currency === 'cny' && item.origin === 'modern') {
+    j.purchasedModern = true; j.cnySpent = (j.cnySpent || 0) + record.amount;
+  }
+  if (record.type === 'sell' && record.currency === 'stone' && item.origin === 'modern' && j.departed && j.purchasedModern) j.outboundSold = true;
+  if (record.type === 'buy' && record.currency === 'stone' && item.origin === 'cultivation' && j.outboundSold) j.loadedReturn = true;
+  if (record.type === 'sell' && record.currency === 'cny' && item.origin === 'cultivation' && j.returned && j.loadedReturn) {
+    j.cnyReturned = (j.cnyReturned || 0) + record.amount;
+    j.inboundSold = true; j.completedAt = state.world.clockMs;
+  }
+}
+export function noteTutorialCross(state, toSide) {
+  const j = state.tutorial.journey ??= {};
+  if (toSide === 'cultivation' && j.purchasedModern) j.departed = true;
+  if (toSide === 'modern' && j.outboundSold && state.inventory.some(e => ITEM_MAP[e.itemId]?.origin === 'cultivation' && e.qty > 0)) {
+    j.loadedReturn = true; j.returned = true;
+  }
 }
 
 export function isTutorialFinished(state) {
@@ -98,6 +124,7 @@ export function isTutorialFinished(state) {
 }
 
 export function skipTutorial(state) {
+  state.tutorial.skipped = true;
   state.tutorial.step = TUTORIAL_STEPS.length;
   emit(EV.TUTORIAL, { step: state.tutorial.step });
 }

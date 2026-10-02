@@ -17,6 +17,7 @@ import { logGood, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt } from '../core/util.js';
 import { investmentBudget } from './finance.js';
+import { INDUSTRIES } from '../data/industries.js';
 import { alchemyPlan } from './alchemy.js';
 
 export function ownedCount(state, id) {
@@ -183,6 +184,7 @@ export function shopReservations(state) {
     const plan = alchemyPlan(state);
     for (const m of plan.mats || []) keep[m.id] = Math.max(keep[m.id] || 0, m.need);
   }
+  for (const p of INDUSTRIES) if (state.modern.industries?.[p.id]?.on) for (const [id, n] of Object.entries(p.mats)) keep[id] = (keep[id] || 0) + n;
   return keep;
 }
 export function setShopPolicy(state, { mode, itemId, keepQty } = {}) {

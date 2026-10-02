@@ -14,15 +14,16 @@
  */
 
 import { emit, EV } from './bus.js';
-import { tickCultivation, advanceIfReady } from '../systems/cultivation.js';
+import { tickCultivation, advanceIfReady, nextCultivationEvent } from '../systems/cultivation.js';
 import { tickModern } from '../systems/modern.js';
 import { tickEstate, nextShopEvent } from '../systems/estate.js';
 import { tickStamina, tickAutoBattle } from '../systems/dungeon.js';
 import { tickFarm, nextFarmEvent } from '../systems/farm.js';
 import { tickRanch, nextRanchEvent } from '../systems/ranch.js';
 import { tickAlchemy, nextAlchemyEvent } from '../systems/alchemy.js';
+import { tickIndustries, nextIndustryEvent } from '../systems/industries.js';
 import { tickResearch } from '../systems/research.js';
-import { tickTales } from '../systems/tales.js';
+import { tickTales, nextTaleEvent } from '../systems/tales.js';
 import { tickTradehouse } from '../systems/tradehouse.js';
 import { ensureRivals } from '../systems/ranking.js';
 import { ensureDay } from '../systems/rift.js';
@@ -129,7 +130,7 @@ export function advance(state, dtWorld, dtReal = dtWorld / (state.world.speed ||
     for (const buff of state.player.buffs || []) {
       if (buff.until > now) slice = Math.min(slice, buff.until - now);
     }
-    for (const eventMs of [nextFarmEvent(state), nextRanchEvent(state), nextAlchemyEvent(state), nextShopEvent(state)]) {
+    for (const eventMs of [nextFarmEvent(state), nextRanchEvent(state), nextAlchemyEvent(state), nextShopEvent(state), nextTaleEvent(state), nextIndustryEvent(state), nextCultivationEvent(state)]) {
       if (eventMs > 0) slice = Math.min(slice, eventMs);
     }
     state.world.clockMs += slice;
@@ -184,6 +185,7 @@ function runSystems(state, dtWorld, dtReal) {
   tickFarm(state, dtWorld);
   tickRanch(state, dtWorld);
   tickAlchemy(state, dtWorld);
+  tickIndustries(state, dtWorld);
   tickResearch(state, dtWorld);
   tickTales(state, dtWorld);
   tickTradehouse(state, dtWorld);

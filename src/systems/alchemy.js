@@ -4,11 +4,12 @@ import { getItem } from '../data/items.js';
 import { AUX_MAP } from '../data/alchemy.js';
 import { CROPS } from '../data/crops.js';
 import { RANCH_BEASTS } from '../data/beasts.js';
-import { DUNGEONS, QUALITY_MAP } from '../data/dungeons.js';
+import { DUNGEONS } from '../data/dungeons.js';
 import { stageInfo } from '../data/realms.js';
 import { researchEffects } from '../data/research.js';
 import { computeAttrs } from './character.js';
-import { addItem, countOf, removeEntry, validQuantity } from './inventory.js';
+import { validQuantity } from './inventory.js';
+import { addProduced, productionCount, consumeWorld } from './cargo.js';
 import { countCraft } from './daily.js';
 import { logGood, logWarn, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
@@ -30,7 +31,7 @@ export function recipeStatus(state, id, auxId = 'plain') {
   if (!recipe || !aux) return { ok: false, reason: '丹方或辅材方案不存在。' };
   const merged = { ...recipe.mats };
   for (const [id, qty] of Object.entries(aux.mats)) merged[id] = (merged[id] || 0) + qty;
-  const mats = Object.entries(merged).map(([id, need]) => ({ id, need, have: countOf(state, id), name: getItem(id)?.name || id, source: materialSource(state, id) }));
+  const mats = Object.entries(merged).map(([id, need]) => ({ id, need, have: productionCount(state, id), name: getItem(id)?.name || id, source: materialSource(state, id) }));
   const cost = recipe.cost + aux.cost, rate = alchemyRate(state, recipe, auxId), tox = sideEffectRate(state, auxId);
   const matOk = mats.every(m => m.have >= m.need), stoneOk = state.currency.stone >= cost;
   const locked = state.player.stage < recipe.unlockStage || state.player.stage < aux.stage;
@@ -44,14 +45,6 @@ export function alchemyRate(state, recipe, auxId = 'plain') {
 export function sideEffectRate(state, auxId = 'plain') { return clamp(.4 * (researchEffects(state).alchemyTox ?? 1) * (AUX_MAP[auxId]?.tox ?? 1), 0, 1); }
 export function isFirstCraft(state, id) { return !state.crafting?.seen?.[id]; }
 export function markSeen(state, id) { (state.crafting.seen ??= {})[id] = true; }
-function consumeMaterial(state, id, qty) {
-  let left = qty;
-  const entries = state.inventory.filter(e => e.itemId === id).slice().sort((a, b) => (QUALITY_MAP[a.quality]?.mult || 1) - (QUALITY_MAP[b.quality]?.mult || 1));
-  for (const entry of entries) {
-    if (left <= 0) break;
-    left -= removeEntry(state, entry.uid, Math.min(entry.qty, left));
-  }
-}
 export function craft(state, id, times = 1, { auxId = 'plain', silent = false, rng = Math.random, reserveStone = 0 } = {}) {
   if (!validQuantity(times) || times > 100 || !Number.isSafeInteger(reserveStone) || reserveStone < 0) return { ok: false, reason: '炼制次数须为 1–100 的整数，保留灵石须为非负整数。' };
   const initial = recipeStatus(state, id, auxId);
@@ -61,7 +54,7 @@ export function craft(state, id, times = 1, { auxId = 'plain', silent = false, r
   for (let i = 0; i < times; i++) {
     const st = recipeStatus(state, id, auxId);
     if (!st.ok || state.currency.stone - st.cost < reserveStone) break;
-    for (const m of st.mats) consumeMaterial(state, m.id, m.need);
+    for (const m of st.mats) consumeWorld(state, 'cultivation', m.id, m.need);
     state.currency.stone -= st.cost;
     baseSpent += st.cost;
     attempts++;
@@ -69,7 +62,7 @@ export function craft(state, id, times = 1, { auxId = 'plain', silent = false, r
     if (rng() < st.rate) {
       const roll = st.aux.rare + st.aux.fine > 0 ? rng() : 1;
       const grade = roll < st.aux.rare ? 'rare' : roll < st.aux.rare + st.aux.fine ? 'fine' : 'common';
-      addItem(state, r.out, r.qty, grade);
+      addProduced(state, r.out, r.qty, grade);
       grades[grade] = (grades[grade] || 0) + r.qty;
       made += r.qty;
     } else {
@@ -133,3 +126,11 @@ export function nextAlchemyEvent(state) {
   return researchEffects(state).autoAlchemy && state.crafting.autoAlchemy ? AUTO_ALCHEMY_INTERVAL - (state.crafting.autoAcc || 0) : Infinity;
 }
 export function alchemyPlan(state) { return recipeStatus(state, state.crafting.selectedRecipe || 'huiyuan', state.crafting.selectedAux || 'plain'); }
+
+export function alchemyEconomics(state, id, auxId) {
+  const st = recipeStatus(state,id,auxId);
+  if(!st.recipe)return null;
+  const expected = st.rate * st.recipe.qty;
+  const cost = st.cost * (1 + (1-st.rate)*st.tox*.5);
+  return { expectedPills:expected, stonePerPill:cost/expected, rarePer100:st.rate*st.aux.rare*100, meanPotency:1+st.aux.fine*.15+st.aux.rare*.3, locked:st.locked };
+}

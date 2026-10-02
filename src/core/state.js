@@ -36,6 +36,7 @@ export function createInitialState(nowMs) {
       stamina: 100,
       staminaAcc: 0,
       ascensionReady: false,
+      autoBreakthrough: false,
       breakthroughFails: 0,
       breakthroughBuff: 0,    // 一次性突破加成（筑基丹）
       buffs: [],              // [{id, name, until, mods}]
@@ -55,6 +56,7 @@ export function createInitialState(nowMs) {
       lastCrossAt: 0,
     },
 
+    cargo: { storage: { modern: [], cultivation: [] } },
     inventory: [],            // [{uid, itemId, qty, quality}]
 
     equipment: {
@@ -82,6 +84,7 @@ export function createInitialState(nowMs) {
       businessLevel: 0,
       workOn: true,
       reserveCny: 0,
+      industries: {},
     },
 
     /* ---- 灵田（GDD 11.1）---- */
@@ -150,6 +153,8 @@ export function createInitialState(nowMs) {
       seen: {},
       count: 0,
       pending: null,
+      history: [],
+      schedule: null,
     },
 
     /* ---- 轮回与天命（GDD 16）---- */
@@ -241,13 +246,14 @@ export function createInitialState(nowMs) {
     },
 
     dungeon: {
+      materialTargets: {},
       cleared: {},            // `${id}:${diff}` → 次数
       runs: 0,
       fails: 0,
       log: [],
     },
 
-    tutorial: { step: 0, done: {} },
+    tutorial: { step: 0, done: {}, skipped: false, journey: {} },
 
     stats: {
       profit: 0,

@@ -6,7 +6,7 @@ import { h, panel, bar, kv } from '../dom.js';
 import { FLAT_STAGES, stageInfo, TIER_SUCCESS, BREAKTHROUGH_PITY, BREAKTHROUGH_FAIL_LOSS } from '../../data/realms.js';
 import { researchEffects } from '../../data/research.js';
 import { computeAttrs } from '../../systems/character.js';
-import { cultivationRate, stageProgress, breakthroughInfo, attemptBreakthrough, breakthroughLossMultiplier } from '../../systems/cultivation.js';
+import { cultivationRate, stageProgress, breakthroughInfo, attemptBreakthrough, breakthroughLossMultiplier, setBreakthroughAutomation } from '../../systems/cultivation.js';
 import { combatPower } from '../../systems/combat.js';
 import { PATHS, getPath } from '../../data/paths.js';
 import { fmtInt, fmtPct, fmtShort, fmtDuration } from '../../core/util.js';
@@ -226,7 +226,10 @@ export function renderCultivation(state, ctx) {
       ),
   );
 
-  return h('div.flex-col.gap-4', null, main, pathPanel, roadmap);
+  const automation = panel('闭关突破托管', state.player.autoBreakthrough ? '已开启' : '已关闭',
+    h('p.t-xs.t-dim', { text: '先亲自尝试一次跨境突破，之后可托管。修为圆满时按真实成功率自动尝试，失败照常逸散修为并推进保底，已有丹药加成照常消耗。不会自动买药、选择道途或渡最终雷劫、飞升。' }),
+    h('button.btn.btn-sm.mt-2', { text: state.player.autoBreakthrough ? '关闭突破托管' : '开启突破托管', disabled: state.player.stage < 10 && !(state.stats.breakthroughAttempts > 0), onclick: () => { const r = setBreakthroughAutomation(state, !state.player.autoBreakthrough); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }));
+  return h('div.flex-col.gap-4', null, main, automation, pathPanel, roadmap);
 }
 
 export { pathModal, breakthroughModal };

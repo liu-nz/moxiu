@@ -10,6 +10,8 @@ import { harvestAll } from '../../systems/farm.js';
 import { collectAll } from '../../systems/ranch.js';
 import { TUTORIAL_STEPS } from '../../systems/tutorial.js';
 import { growthPanel, offlineProduction } from './progression.js';
+import { taleStats, pendingTale } from '../../systems/tales.js';
+import { journeyPanel } from './journey.js';
 import { fmtInt, fmtShort, fmtDuration } from '../../core/util.js';
 
 export function progressEta(s) {
@@ -17,7 +19,7 @@ export function progressEta(s) {
   return p.cur >= p.need ? (p.isTop ? '修为圆满 · 可检查突破' : '即将晋层')
     : rate > 0 ? `预计 ${fmtDuration((p.need - p.cur) / rate * 1000)} 后修为圆满` : '修炼暂停';
 }
-const guideRoutes = { job:'modern', buy:'market', cargo:'market', cross:'gate', sell:'market', cultivate:'cultivation', farm:'farm', dungeon:'dungeon', skill:'character', research:'research', companion:'companion', foundation:'cultivation' };
+const guideRoutes = { job:'modern', buy:'market', cargo:'market', cross:'gate', sell:'market', returnCargo:'market', return:'gate', reverseSell:'market', cultivate:'cultivation', farm:'farm', dungeon:'dungeon', skill:'character', research:'research', companion:'companion', foundation:'cultivation' };
 
 export function renderHome(s, ctx) {
   const p = stageProgress(s), cur = stageInfo(s.player.stage), bt = breakthroughInfo(s);
@@ -60,10 +62,15 @@ export function renderHome(s, ctx) {
     kv('工资与商业',`¥${fmtInt(totalIncomePerHour(s))} / 时`),kv('地产租金',`¥${fmtInt(rentPerHour(s))} / 时`),
     h('div.btn-row.mt-3',null,action('管理事业','modern'),action('地产与店铺','estate'),action('休闲生活','lifestyle')),
   );
+  const ts = taleStats(s), pendingTaleItem = pendingTale(s);
+  const tales = panel('奇闻手记', `见闻 ${ts.seen}/${ts.total} · 今日 ${ts.today}/${ts.quota}`,
+    h('p.t-xs.t-dim', { text: '每界潮日2次机会，福缘与生活、宗门、城市加成可提高至3–4次。只保留一条待处理事件，离线不堆弹窗；付费选择须备足资金。' }),
+    pendingTaleItem ? h('button.btn.btn-sm.mt-2', { text: `处理奇闻：${pendingTaleItem.name}`, onclick: () => ctx.taleModal() }) : null,
+    h('details.mt-2', null, h('summary.t-xs', { text: '最近选择与结果' }), (s.tales?.history || []).map(e => h('div.mt-2', null, h('p.t-xs', { text: `${e.name} · ${e.choice}` }), h('p.t-xs.t-dim', { text: e.text }), h('p.t-xs', { text: e.notes.join(' · ') || '无资源变动' })))));
   const report = ctx.offlineReport;
   const signed = n => `${n < 0 ? '−' : '+'}${fmtInt(Math.abs(n))}`;
   return h('div.flex-col.gap-4',null,
     report ? panel('你不在的时候',fmtDuration(report.elapsedReal),h('p.t-sm',{text:`修为 ${signed(report.cult)} · 灵石 ${signed(report.stone)} · ¥${signed(report.cny)}`}),report.capped?h('p.t-xs.t-dim',{text:'本次最多结算三天。'}):null,offlineProduction(report)):null,
-    hero,guide,growthPanel(s,ctx),leisure,income,
+    hero,guide,journeyPanel(s,ctx),growthPanel(s,ctx),leisure,income,tales,
   );
 }
