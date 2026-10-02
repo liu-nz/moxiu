@@ -61,7 +61,7 @@ export const PROJECTS = [
   {
     id: 'autopill', branch: 'alchemy', name: '自动炼丹机', cost: 110, req: ['database'],
     effect: { autoAlchemy: true },
-    effectDesc: '离线自动炼丹（每次界潮刷新时结算一批）',
+    effectDesc: '解锁按指定丹方自动炼丹：每 30 分钟最多 3 炉，可设预算保留线',
     desc: '炉子会自己看火。你终于可以睡觉了。',
   },
 

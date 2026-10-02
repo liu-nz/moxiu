@@ -38,6 +38,9 @@ import { getPath } from '../data/paths.js';
 import { stageInfo } from '../data/realms.js';
 import { hotList, demandArrow } from '../systems/market.js';
 import { fmtInt, fmtShort, fmtDuration, fmtKg, fmtPct } from '../core/util.js';
+import { RANCH_MAP } from '../data/beasts.js';
+import { researchEffects } from '../data/research.js';
+import { alchemyPlan, nextAlchemyEvent } from '../systems/alchemy.js';
 import { clockHM } from '../core/clock.js';
 
 /* ------------------------------------------------------------------ */
@@ -152,7 +155,25 @@ function attrsFast(s) {
 function liveValue(key) {
   const s = stateRef;
   if (!s) return '';
+  if (key.startsWith('farm')) {
+    const [kind, index] = key.split(':'), p = s.farm.plots[Number(index)];
+    if (kind === 'farmNotReady') return !p || p.readyAt > s.world.clockMs;
+    if (kind === 'farmTime') return p ? p.readyAt <= s.world.clockMs ? '已成熟 · 可以收获' : `距成熟 ${fmtDuration(p.readyAt - s.world.clockMs)}` : '空地';
+    if (kind === 'farmRatio') return p ? Math.max(0, Math.min(1, (s.world.clockMs - p.plantedAt) / (p.readyAt - p.plantedAt))) : 0;
+  }
+  if (key.startsWith('ranch')) {
+    const [kind, index] = key.split(':'), slot = s.ranch.slots[Number(index)], b = RANCH_MAP[slot?.beastId];
+    if (kind === 'ranchTime') return b ? `下批产出 ${fmtDuration(Math.max(0, b.cycleMs - (slot.acc || 0)))}` : '';
+    if (kind === 'ranchRatio') return b ? (slot.acc || 0) / b.cycleMs : 0;
+  }
   switch (key) {
+    case 'alchemyAutoStatus': {
+      if (!researchEffects(s).autoAlchemy) return '研究「自动炼丹机」后解锁。';
+      if (!s.crafting.autoAlchemy) return '机器已暂停。';
+      const st = alchemyPlan(s);
+      const waiting = !st.ok ? st.reason : s.currency.stone - st.cost < (s.crafting.reserveStone || 0) ? '资金保留线' : '';
+      return `${waiting ? `等待：${waiting}` : `运行：${st.recipe.name} · ${st.aux.name}`} · 下次检查 ${fmtDuration(nextAlchemyEvent(s))}`;
+    }
     case 'goalEta': return progressEta(s);
     case 'goalMissing': { const p=stageProgress(s); return `还需 ${fmtInt(Math.max(0,p.need-p.cur))} 修为${p.isTop?' · 跨境界需手动突破':''}`; }
     case 'leisureStatus': return `${s.farm.plots.filter(p=>p && p.readyAt<=s.world.clockMs).length} 块灵田可收获 · 牧场待收 ${s.ranch.slots.reduce((n,x)=>n+(x?.pending||0),0)} 件`;

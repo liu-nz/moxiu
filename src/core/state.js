@@ -87,12 +87,17 @@ export function createInitialState(nowMs) {
     farm: {
       plots: [],              // [{cropId, plantedAt, readyAt}] | null
       unlocked: 3,
+      plan: {},
+      autoHarvest: true,
+      autoReplant: true,
+      reserveStone: 0,
     },
 
     /* ---- 灵脉牧场（GDD 11.2）---- */
     ranch: {
       slots: [],              // [{beastId, lastAt}] | null
       unlocked: 2,
+      autoCollect: true,
     },
 
     /* ---- 灵兽 ---- */
@@ -105,6 +110,11 @@ export function createInitialState(nowMs) {
     crafting: {
       autoAlchemy: false,
       lastAutoAt: 0,
+      autoAcc: 0,
+      selectedRecipe: 'huiyuan',
+      selectedAux: 'plain',
+      reserveStone: 0,
+      history: [],
       totalPills: 0,
       totalForged: 0,
       seen: {},               // 已炼过的丹方（药性分析仪首次提示用）

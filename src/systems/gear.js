@@ -8,9 +8,11 @@ import { techEquipment } from '../data/equipment.js';
 import { ITEM_MAP, CONSUMABLE_MAP } from '../data/items.js';
 import { computeAttrs, combatPower, guildMods } from './character.js';
 import { applyBreakthroughPill } from './cultivation.js';
-import { removeItem, addItem } from './inventory.js';
+import { removeItem, removeEntry, addItem } from './inventory.js';
 import { researchEffects } from '../data/research.js';
 import { projectEffects } from '../data/projects.js';
+import { pillEffect, pillDescription, PILL_QUALITY } from '../data/alchemy.js';
+import { BREAKTHROUGH_PITY } from '../data/realms.js';
 import { getPath, PATH_SWITCH_COST } from '../data/paths.js';
 import { logGood, logWarn, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
@@ -245,28 +247,37 @@ export function scrapSkill(state, skillUid) {
 }
 
 /* ---------------- 丹药 ---------------- */
-export function useConsumable(state, id) {
+export function useConsumable(state, id, entryUid = null) {
   const c = CONSUMABLE_MAP[id];
   if (!c) return { ok: false, reason: '没有这种丹药。' };
-  if (removeItem(state, id, 1) < 1) return { ok: false, reason: '背包里没有。' };
-
-  if (c.effect.type === 'breakthrough') {
-    applyBreakthroughPill(state, c.effect.add);
-    logGood(state, `服下「${c.name}」，下次突破成功率 +${Math.round(c.effect.add * 100)}%。`);
-  } else if (c.effect.type === 'stamina') {
-    state.player.stamina = Math.min(100 + (guildMods(state).staminaMax || 0), state.player.stamina + c.effect.add);
-    logGood(state, `服下「${c.name}」，体力 +${c.effect.add}。`);
-  } else if (c.effect.type === 'cultivation_boost') {
-    state.player.buffs.push({
-      id: 'ning_shen',
-      name: c.name,
-      until: state.world.clockMs + c.effect.durationMs,
-      mods: { cultSpeed: c.effect.add },
-    });
-    logGood(state, `服下「${c.name}」，一小时内修炼速度 +100%。`);
+  const entry = entryUid !== null ? state.inventory.find(e => e.uid === entryUid && e.itemId === id) :
+    state.inventory.filter(e => e.itemId === id && e.qty > 0).sort((a, b) => (PILL_QUALITY[a.quality]?.potency || 1) - (PILL_QUALITY[b.quality]?.potency || 1))[0];
+  if (!entry || entry.qty < 1) return { ok: false, reason: '背包里没有这枚丹药。' };
+  const e = pillEffect(id, entry.quality), now = state.world.clockMs;
+  const maxStamina = 100 + (guildMods(state).staminaMax || 0);
+  if (e.type === 'stamina' && state.player.stamina >= maxStamina) return { ok: false, reason: '体力已满，丹药已保留。' };
+  if (e.type === 'pity' && state.player.breakthroughFails >= BREAKTHROUGH_PITY) return { ok: false, reason: '下次突破已保底，丹药已保留。' };
+  const isCultPill = b => b.id === 'ning_shen' || b.id === 'cult_pill';
+  if (e.type === 'cultivation_boost') {
+    const active = state.player.buffs.find(b => isCultPill(b) && b.until > now);
+    if (active && ((active.mods.cultSpeed || 0) > e.add || (active.mods.cultSpeed === e.add && active.until >= now + e.durationMs))) {
+      return { ok: false, reason: '当前丹药效果更强或仍覆盖完整时长，已保留这枚丹药。' };
+    }
   }
+  removeEntry(state, entry.uid, 1);
+  if (e.type === 'breakthrough') applyBreakthroughPill(state, e.add);
+  else {
+    state.player.pillsUsed = (state.player.pillsUsed || 0) + 1;
+    if (e.type === 'stamina') state.player.stamina = Math.min(maxStamina, state.player.stamina + e.add);
+    if (e.type === 'pity') state.player.breakthroughFails = Math.min(BREAKTHROUGH_PITY, state.player.breakthroughFails + e.add);
+    if (e.type === 'cultivation_boost') {
+      state.player.buffs = state.player.buffs.filter(b => !isCultPill(b));
+      state.player.buffs.push({ id: 'cult_pill', name: c.name, sourceItem: id, until: now + e.durationMs, mods: { cultSpeed: e.add } });
+    }
+  }
+  logGood(state, `服下「${PILL_QUALITY[entry.quality]?.name || '普通'}${c.name}」：${pillDescription(id, entry.quality)}。`);
   emit(EV.STATE);
-  return { ok: true };
+  return { ok: true, effect: e };
 }
 
 export { tierOf, effectiveStats };

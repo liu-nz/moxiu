@@ -4,6 +4,8 @@
  */
 
 import { RANCH_BEASTS, RANCH_MAP, RANCH } from '../data/beasts.js';
+import { hasFarmGuard } from './farm.js';
+import { getItem } from '../data/items.js';
 import { addItem } from './inventory.js';
 import { logGood, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
@@ -12,6 +14,7 @@ import { researchEffects } from '../data/research.js';
 
 export function ensureSlots(state) {
   const r = state.ranch;
+  r.autoCollect ??= true;
   while (r.slots.length < r.unlocked) r.slots.push(null);
   if (r.slots.length > r.unlocked) r.slots.length = r.unlocked;
   return r.slots;
@@ -50,7 +53,8 @@ export function buySlot(state) {
 
 export function removeBeast(state, index) {
   ensureSlots(state);
-  if (!state.ranch.slots[index]) return { ok: false };
+  if (!Number.isInteger(index) || index < 0 || index >= state.ranch.unlocked || !state.ranch.slots[index]) return { ok: false, reason: '栏位不存在。' };
+  if (state.ranch.slots[index].pending > 0) collect(state, index);
   state.ranch.slots[index] = null;
   emit(EV.STATE);
   return { ok: true };
@@ -59,7 +63,7 @@ export function removeBeast(state, index) {
 /** 主循环：累计产出（不自动入包，等玩家收，除非有自动研究） */
 export function tickRanch(state, dtMs) {
   const r = state.ranch;
-  if (!r) return;
+  if (!r || !Number.isFinite(dtMs) || dtMs < 0) return;
   ensureSlots(state);
   const fx = researchEffects(state);
   for (const slot of r.slots) {
@@ -67,20 +71,27 @@ export function tickRanch(state, dtMs) {
     const b = RANCH_MAP[slot.beastId];
     if (!b) continue;
     slot.acc = (slot.acc || 0) + dtMs;
-    while (slot.acc >= b.cycleMs) {
-      slot.acc -= b.cycleMs;
-      slot.pending = (slot.pending || 0) + b.qty;
+    const cycles = Math.floor(slot.acc / b.cycleMs);
+    if (cycles > 0) {
+      slot.acc -= cycles * b.cycleMs;
+      const yieldQty = cycles * b.qty * (hasFarmGuard(state) ? 1.15 : 1) + (slot.yieldFraction || 0);
+      const whole = Math.floor(yieldQty + 1e-9);
+      slot.yieldFraction = Math.max(0, yieldQty - whole);
+      slot.pending = (slot.pending || 0) + whole;
+      emit(EV.STATE);
     }
   }
   // 自动灵田研究附带自动收牧场
-  if (fx.autoFarm) collectAll(state, true);
+  if (fx.autoFarm && r.autoCollect) collectAll(state, true);
 }
 
 export function collect(state, index) {
+  if (!Number.isInteger(index) || index < 0 || index >= state.ranch.unlocked) return { ok: false, reason: '栏位不存在。' };
   ensureSlots(state);
   const slot = state.ranch.slots[index];
   if (!slot) return { ok: false, reason: '这个栏位是空的。' };
   const b = RANCH_MAP[slot.beastId];
+  if (!b) return { ok: false, reason: '灵兽资料不可用。' };
   const qty = slot.pending || 0;
   if (qty <= 0) return { ok: false, reason: '还没有产出。' };
   addItem(state, b.produceId, qty, 'common');
@@ -98,8 +109,9 @@ export function collectAll(state, silent = false) {
     const slot = state.ranch.slots[i];
     if (!slot || !slot.pending) continue;
     const b = RANCH_MAP[slot.beastId];
+    if (!b) continue;
     addItem(state, b.produceId, slot.pending, 'common');
-    names.push(`${b.produceId}×${slot.pending}`);
+    names.push(`${getItem(b.produceId)?.name || b.produceId}×${slot.pending}`);
     total += slot.pending;
     slot.pending = 0;
   }
@@ -127,6 +139,18 @@ export function ranchSummary(state) {
     unlocked: state.ranch.unlocked,
     max: RANCH.max,
     nextCost: RANCH.costOf(state.ranch.unlocked),
-    guarded: (state.beasts?.deployed?.length || 0) > 0,
+    guarded: hasFarmGuard(state),
   };
+}
+
+export function setRanchAutoCollect(state, on) {
+  if (!researchEffects(state).autoFarm) return { ok: false, reason: '先研究「自动灵田」。' };
+  if (typeof on !== 'boolean') return { ok: false, reason: '请选择开关状态。' };
+  state.ranch.autoCollect = on;
+  emit(EV.STATE);
+  return { ok: true };
+}
+
+export function nextRanchEvent(state) {
+  return Math.min(Infinity, ...state.ranch.slots.filter(s => s && RANCH_MAP[s.beastId]).map(s => RANCH_MAP[s.beastId].cycleMs - (s.acc || 0)));
 }

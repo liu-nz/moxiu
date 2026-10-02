@@ -27,7 +27,7 @@ export const CROPS = [
     id: 'binglian', name: '冰莲', itemId: 'binglian', yieldQty: 3,
     seedCost: 1200, growMs: 2 * 24 * 60 * 60 * 1000,
     unlockStage: 14,
-    desc: '只在极寒灵泉里开两天。摘下来就开始化，所以必须当天跨界。',
+    desc: '两天一茬，供灵元丹与渡劫丹。收获后可在背包保存，提前规划种植更从容。',
   },
   {
     id: 'jiuzhuan', name: '九转还魂草', itemId: 'jiuzhuan', yieldQty: 2,

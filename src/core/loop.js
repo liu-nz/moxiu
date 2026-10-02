@@ -18,8 +18,9 @@ import { tickCultivation, advanceIfReady } from '../systems/cultivation.js';
 import { tickModern } from '../systems/modern.js';
 import { tickEstate } from '../systems/estate.js';
 import { tickStamina, tickAutoBattle } from '../systems/dungeon.js';
-import { tickFarm } from '../systems/farm.js';
-import { tickRanch } from '../systems/ranch.js';
+import { tickFarm, nextFarmEvent } from '../systems/farm.js';
+import { tickRanch, nextRanchEvent } from '../systems/ranch.js';
+import { tickAlchemy, nextAlchemyEvent } from '../systems/alchemy.js';
 import { tickResearch } from '../systems/research.js';
 import { tickTales } from '../systems/tales.js';
 import { tickTradehouse } from '../systems/tradehouse.js';
@@ -118,6 +119,8 @@ export function syncWorldDay(state, { duties = true } = {}) {
 export function advance(state, dtWorld, dtReal = dtWorld / (state.world.speed || 1)) {
   if (!Number.isFinite(dtWorld) || dtWorld < 0 || !Number.isFinite(dtReal) || dtReal < 0) return;
   syncWorldDay(state);
+  tickFarm(state, 0);
+  tickRanch(state, 0);
   let left = dtWorld;
   const ratio = dtWorld > 0 ? dtReal / dtWorld : 0;
   while (left > 0) {
@@ -125,6 +128,9 @@ export function advance(state, dtWorld, dtReal = dtWorld / (state.world.speed ||
     let slice = Math.min(left, state.auto?.battleOn ? 60000 : MAX_SLICE_WORLD_MS, nextRiftAt(now) - now);
     for (const buff of state.player.buffs || []) {
       if (buff.until > now) slice = Math.min(slice, buff.until - now);
+    }
+    for (const eventMs of [nextFarmEvent(state), nextRanchEvent(state), nextAlchemyEvent(state)]) {
+      if (eventMs > 0) slice = Math.min(slice, eventMs);
     }
     state.world.clockMs += slice;
     runSystems(state, slice, slice * ratio);
@@ -177,6 +183,7 @@ function runSystems(state, dtWorld, dtReal) {
   state.world.clockMs = endClock;
   tickFarm(state, dtWorld);
   tickRanch(state, dtWorld);
+  tickAlchemy(state, dtWorld);
   tickResearch(state, dtWorld);
   tickTales(state, dtWorld);
   tickTradehouse(state, dtWorld);

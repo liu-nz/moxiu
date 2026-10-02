@@ -6,6 +6,7 @@
  */
 
 import { ITEM_MAP, CONSUMABLE_MAP, getItem } from '../data/items.js';
+import { PILL_QUALITY } from '../data/alchemy.js';
 import { QUALITY_MAP } from '../data/dungeons.js';
 import { uid } from '../core/util.js';
 
@@ -14,7 +15,7 @@ export const validQuantity = (qty) => Number.isSafeInteger(qty) && qty > 0;
 export function addItem(state, itemId, qty = 1, quality = 'common') {
   if (!validQuantity(qty) || !getItem(itemId)) return null;
   const isConsumable = !!CONSUMABLE_MAP[itemId];
-  const q = isConsumable ? 'common' : quality;
+  const q = isConsumable ? (PILL_QUALITY[quality] ? quality : 'common') : quality;
   let entry = state.inventory.find((e) => e.itemId === itemId && e.quality === q);
   if (!entry) {
     entry = { uid: uid('it'), itemId, qty: 0, quality: q };
