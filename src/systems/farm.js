@@ -53,6 +53,7 @@ export function plant(state, index, cropId) {
     return { ok: false, reason: `灵石不足（需 ${fmtInt(crop.seedCost)}）。` };
   }
   state.currency.stone -= crop.seedCost;
+  state.stats.farmSeedStone = (state.stats.farmSeedStone || 0) + crop.seedCost;
   state.farm.plots[index] = {
     cropId,
     plantedAt: state.world.clockMs,

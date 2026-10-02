@@ -9,6 +9,7 @@ import { rentPerHour } from '../../systems/estate.js';
 import { harvestAll } from '../../systems/farm.js';
 import { collectAll } from '../../systems/ranch.js';
 import { TUTORIAL_STEPS } from '../../systems/tutorial.js';
+import { growthPanel, offlineProduction } from './progression.js';
 import { fmtInt, fmtShort, fmtDuration } from '../../core/util.js';
 
 export function progressEta(s) {
@@ -60,8 +61,9 @@ export function renderHome(s, ctx) {
     h('div.btn-row.mt-3',null,action('管理事业','modern'),action('地产与店铺','estate'),action('休闲生活','lifestyle')),
   );
   const report = ctx.offlineReport;
+  const signed = n => `${n < 0 ? '−' : '+'}${fmtInt(Math.abs(n))}`;
   return h('div.flex-col.gap-4',null,
-    report ? panel('你不在的时候',fmtDuration(report.elapsedReal),h('p.t-sm',{text:`修为 +${fmtInt(report.cult)} · 灵石 +${fmtInt(report.stone)} · ¥${fmtInt(report.cny)}`}),report.capped?h('p.t-xs.t-dim',{text:'本次最多结算三天。'}):null):null,
-    hero,guide,leisure,income,
+    report ? panel('你不在的时候',fmtDuration(report.elapsedReal),h('p.t-sm',{text:`修为 ${signed(report.cult)} · 灵石 ${signed(report.stone)} · ¥${signed(report.cny)}`}),report.capped?h('p.t-xs.t-dim',{text:'本次最多结算三天。'}):null,offlineProduction(report)):null,
+    hero,guide,growthPanel(s,ctx),leisure,income,
   );
 }

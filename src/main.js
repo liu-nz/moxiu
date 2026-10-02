@@ -14,6 +14,7 @@ import { modal, showToast, h, kv } from './ui/dom.js';
 import { applyOffline } from './systems/offline.js';
 import { updateTutorial } from './systems/tutorial.js';
 import { stageInfo } from './data/realms.js';
+import { offlineProduction } from './ui/views/progression.js';
 import { fmtDuration, fmtInt } from './core/util.js';
 
 let state = null;
@@ -199,7 +200,7 @@ function showOfflineReport(report, source) {
   modal({
     title: '你不在的时候',
     subtitle: '两界照常运转。当前世界满速结算，另一世界按 50% 结算。',
-    body: h('dl', { style: 'margin:0' }, rows),
+    body: h('div', null, h('dl', { style: 'margin:0' }, rows), offlineProduction(report)),
     actions: [{ label: '知道了', primary: true }],
   });
 }

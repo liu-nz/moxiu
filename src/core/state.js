@@ -81,6 +81,7 @@ export function createInitialState(nowMs) {
       jobLevel: 1,
       businessLevel: 0,
       workOn: true,
+      reserveCny: 0,
     },
 
     /* ---- 灵田（GDD 11.1）---- */
@@ -139,6 +140,8 @@ export function createInitialState(nowMs) {
       warehouseLevel: 0,
       autoSell: false,
       sellAcc: 0,
+      saleMode: 'surplus',
+      keep: {},
     },
 
     /* ---- 奇闻事件（GDD 14.1）---- */
@@ -213,6 +216,7 @@ export function createInitialState(nowMs) {
     /* ---- 城市灵改工程（GDD 1.3 后期反哺）---- */
     projects: {
       done: {},
+      target: null,
     },
 
     /* ---- 每日 / 每周统计（用于道盟任务与排行榜）---- */
