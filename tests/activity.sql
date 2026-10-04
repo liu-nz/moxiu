@@ -1,0 +1,65 @@
+begin;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+select set_config('qa.actor',gen_random_uuid()::text,true),set_config('qa.friend',gen_random_uuid()::text,true),set_config('qa.stranger',gen_random_uuid()::text,true);
+insert into auth.users(id,aud,role,email,raw_user_meta_data,created_at,updated_at) select current_setting(k)::uuid,'authenticated','authenticated','qa-activity-'||current_setting(k)||'@example.invalid','{"role_name":"同行照料测试"}',now(),now() from unnest(array['qa.actor','qa.friend','qa.stranger']) k;
+do $$
+declare a uuid:=current_setting('qa.actor')::uuid; b uuid:=current_setting('qa.friend')::uuid; x uuid:=current_setting('qa.stranger')::uuid;
+ base jsonb:='{"player":{"stage":2},"playMs":1800000,"currency":{"stone":0,"cny":2000},"inventory":[],"world":{"mode":"standard"},"daily":{}}';
+ projection jsonb:='{"stage":2,"power":200,"wealth":20,"speed":3}';
+ loaded jsonb; r jsonb; candidate jsonb; rev bigint; request_id uuid:=gen_random_uuid(); hid uuid; uid_b bigint;
+ d int:=floor((extract(epoch from now())+10800)/86400)::int;
+begin
+ loaded:=public.moxiu_game_load(a,base); perform public.moxiu_game_load(b,base);
+ assert loaded ? 'activity','Edge load includes account daily context';
+ rev:=(loaded->>'revision')::bigint;
+ candidate:=jsonb_set(jsonb_set(base,'{currency,stone}','20'),'{daily}',jsonb_build_object('signInDay',d,'signInTotal',1,'signInStreak',1));
+ r:=public.moxiu_game_commit_v2(a,rev,request_id,'daily.signIn','[]',candidate,jsonb_build_object('ok',true,'reward',20,'day',d),projection);
+ assert r->'state'->'currency'->>'stone'='20','exact sign in funds saved';
+ assert (select signin_total=1 from moxiu_private.player_activity where user_id=a),'account day recorded atomically';
+ r:=public.moxiu_game_commit_v2(a,rev,request_id,'daily.signIn','[]',candidate,'{"ok":true}',projection);
+ assert r->>'replayed'='true','lost response replays receipt';
+ assert (select signin_total=1 from moxiu_private.player_activity where user_id=a),'retry does not increase total';
+ rev:=(r->>'revision')::bigint;
+ begin
+  perform public.moxiu_game_commit_v2(a,rev,gen_random_uuid(),'daily.signIn','[]',candidate,jsonb_build_object('ok',true,'reward',20,'day',d),projection);
+  raise exception 'duplicate sign in accepted';
+ exception when sqlstate '22023' then null; end;
+ r:=public.moxiu_game_commit_v2(a,rev,gen_random_uuid(),'reset','[]',base,'{"ok":true}',projection);rev:=(r->>'revision')::bigint;
+ loaded:=public.moxiu_game_load(a,base);
+ assert (loaded->'activity'->>'signInDay')::int=d,'account sign in survives cleared character';
+ select uid into uid_b from public.moxiu_player_profiles where user_id=b;
+ insert into moxiu_private.player_links(requester,target,status) values(a,b,'accepted');
+ perform set_config('request.jwt.claims',jsonb_build_object('sub',a,'role','authenticated')::text,true);
+ r:=public.moxiu_social('help',jsonb_build_object('uid',uid_b));
+ assert r->'friends'->0->>'help_sent'='true','card shows daily care sent';
+ perform public.moxiu_social('help',jsonb_build_object('uid',uid_b));
+ assert (select count(*)=1 from moxiu_private.player_help where author=a and owner=b),'care retries do not enqueue duplicates';
+ begin
+  perform public.moxiu_social('help',jsonb_build_object('uid',(select uid from public.moxiu_player_profiles where user_id=x)));
+  raise exception 'nonfriend care accepted';
+ exception when sqlstate '42501' then null; end;
+ begin
+  perform public.moxiu_social('help',jsonb_build_object('uid',uid_b,'reward',999));
+  raise exception 'client care injection accepted';
+ exception when sqlstate '22023' then null; end;
+ perform set_config('request.jwt.claims','{"role":"service_role"}',true);
+ loaded:=public.moxiu_game_load(b,base);hid:=(loaded->'activity'->'help'->>'id')::uuid;
+ assert hid is not null,'recipient gets unclaimed care in trusted context';
+ candidate:=jsonb_set(base,'{daily}',jsonb_build_object('helpClaimedDay',d));
+ request_id:=gen_random_uuid();rev:=(loaded->>'revision')::bigint;
+ r:=public.moxiu_game_commit_v2(b,rev,request_id,'daily.claimHelp','[]',candidate,jsonb_build_object('ok',true,'helpId',hid,'day',d,'kind','灵田'),projection);
+ assert (select claimed_at is not null from moxiu_private.player_help where id=hid),'care token consumed with character save';
+ assert public.moxiu_game_load(b,base)->'activity'->'help'='null'::jsonb,'claim limit hides all additional tokens today';
+ r:=public.moxiu_game_commit_v2(b,rev,request_id,'daily.claimHelp','[]',candidate,'{"ok":true}',projection);
+ assert r->>'replayed'='true','care lost response replay succeeds';
+ update moxiu_private.game_characters set payload=payload||'{"commissions":{"total":10,"sources":["farm","ranch","market"]},"collection":{"crops":["lingmi","huangjing","bainian","binglian","jiuzhuan"],"ranch":["lingji","lingyang","linglu"]},"tales":{"flags":{"relay_complete":"aid","clinic_complete":"study"}}}' where user_id=a;
+ update moxiu_private.player_activity set signin_total=7 where user_id=a;
+ perform moxiu_private.refresh_titles(a);
+ assert (select count(*)=6 from moxiu_private.shard_entitlements where user_id=a and sku in ('title_messenger','title_all_trades','title_herbalist','title_ranch_codex','title_relay_aid','title_clinic_study')),'gameplay achievements grant matching title set';
+ assert exists(select 1 from moxiu_private.shard_entitlements where user_id=a and sku='title_signin'),'seven account days grants free title';
+ assert not exists(select 1 from moxiu_private.shard_entitlements where user_id=a and sku in ('title_relay_search','title_clinic_care','title_creator')),'unchosen endings and founder remain unavailable';
+ assert not has_function_privilege('authenticated','moxiu_private.activity_context(uuid)','execute'),'clients cannot request another account context';
+ assert not has_function_privilege('authenticated','moxiu_private.community_normal_commit(uuid,bigint,uuid,text,jsonb,jsonb,jsonb,jsonb)','execute'),'clients cannot commit arbitrary reward states';
+ assert not has_table_privilege('authenticated','moxiu_private.player_help','insert'),'clients cannot mint care';
+end; $$;
+rollback;

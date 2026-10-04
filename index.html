@@ -3,10 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23191e23'/%3E%3Ctext x='16' y='25' text-anchor='middle' font-size='25' fill='%23f7f7f6'%3E%E5%A2%A8%3C/text%3E%3C/svg%3E">
 <title>墨修 · 两界穿越修仙经营挂机</title>
 <meta name="description" content="《墨修》两界穿越修仙经营挂机游戏 —— 表世界修仙界 · 里世界现代都市 · 每日界潮双向跨界倒卖">
 <link rel="stylesheet" href="assets/css/base.css">
 <link rel="stylesheet" href="assets/css/layout.css">
+<link rel="stylesheet" href="assets/css/chat.css">
 </head>
 <body>
 
@@ -28,6 +30,7 @@
 
 <!-- 移动端底部导航 -->
 <nav class="mobilenav" id="mobilenav"></nav>
+<aside id="chat-root" class="chat-dock" aria-label="聊天频道"></aside>
 
 <!-- 浮层：突破 / 结算 / 引导 -->
 <div class="overlay-root" id="overlay-root"></div>
@@ -48,13 +51,13 @@ python3 -m http.server 8080
 <script>
   window.__moxiu_booted = false;
   window.addEventListener('error', function (e) {
-    if (!window.__moxiu_booted) {
+    if (!window.__moxiu_booted && !window.__moxiu) {
       var el = document.getElementById('boot-fallback');
       if (el) el.style.display = 'block';
     }
   }, true);
   setTimeout(function () {
-    if (!window.__moxiu_booted) {
+    if (!window.__moxiu_booted && !window.__moxiu) {
       var el = document.getElementById('boot-fallback');
       if (el) el.style.display = 'block';
     }

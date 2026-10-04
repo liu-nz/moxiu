@@ -3,7 +3,12 @@
  */
 
 import { h, panel, panelFlush, bar, mount, resetLive, refreshLive, showToast, modal as domModal, closeOverlay } from './dom.js';
+import { renderExploration } from './views/activity.js';
+import { renderBuild } from './views/build.js';
+import { renderHome, progressEta } from './views/home.js';
+import { renderGate, isCrossing } from './views/gate.js';
 import { renderHeader } from './header.js';
+import { accountIdentity } from './account.js';
 import { renderCultivation, pathModal, breakthroughModal } from './views/cultivation.js';
 import { renderMarket } from './views/market.js';
 import { renderDungeon } from './views/dungeon.js';
@@ -18,33 +23,44 @@ import { renderReincarnation } from './views/reincarnation.js';
 import { renderTradehouse } from './views/tradehouse.js';
 import { renderSocial } from './views/social.js';
 import { renderLifestyle } from './views/lifestyle.js';
+import { renderShards } from './views/shards.js';
+import { initChat } from './chat.js';
 
 import { on, emit, EV } from '../core/bus.js';
-import { isStandard } from '../core/loop.js';
 import { SIDE, SIDE_NAME } from '../core/state.js';
+import { staminaMax, staminaEta } from '../systems/dungeon.js';
 import { computeAttrs } from '../systems/character.js';
 import { cultivationRate, stageProgress, breakthroughInfo } from '../systems/cultivation.js';
-import { canCross, cross, carryCapacity, perDirection, msToNextRift } from '../systems/rift.js';
+import { carryCapacity, msToNextRift } from '../systems/rift.js';
 import { carryWeight } from '../systems/inventory.js';
 import { combatPower } from '../systems/combat.js';
 import { totalIncomePerHour } from '../systems/modern.js';
 import { rentPerHour } from '../systems/estate.js';
-import { pendingTale, resolveTale } from '../systems/tales.js';
-import { ascend, ascensionPreview, chooseFate, FATES } from '../systems/reincarnation.js';
+import { pendingTale, taleChoiceStatus } from '../systems/tales.js';
+import { tales_resolveTale as resolveTale } from './commands.js';
+import { ascensionPreview, FATES, canAscend, fateChoicePending, ASCENSION_RESET, ASCENSION_KEEP } from '../systems/reincarnation.js';
+import { reincarnation_ascend as ascend, reincarnation_chooseFate as chooseFate } from './commands.js';
 import { rpPerHour } from '../systems/research.js';
 import { getPath } from '../data/paths.js';
 import { stageInfo } from '../data/realms.js';
-import { TUTORIAL_STEPS } from '../systems/tutorial.js';
 import { hotList, demandArrow } from '../systems/market.js';
 import { fmtInt, fmtShort, fmtDuration, fmtKg, fmtPct } from '../core/util.js';
+import { RANCH_MAP } from '../data/beasts.js';
+import { researchEffects } from '../data/research.js';
+import { alchemyPlan, nextAlchemyEvent } from '../systems/alchemy.js';
+import { investmentAllowed, investmentBudget } from '../systems/finance.js';
+import { status as cityStatus, targetProject } from '../systems/projects.js';
+import { canResearch } from '../data/research.js';
 import { clockHM } from '../core/clock.js';
-import { getItem } from '../data/items.js';
 
 /* ------------------------------------------------------------------ */
 /* 视图表：按当前所在世界分组                                          */
 /* ------------------------------------------------------------------ */
 export const VIEWS = {
   [SIDE.CULTIVATION]: [
+    { id: 'home', name: '首页', render: renderHome },
+    { id: 'gate', name: '界门', render: renderGate },
+    {id:'events',name:'奇闻与世界',render:renderExploration},
     { id: 'cultivation', name: '修炼', render: renderCultivation },
     { id: 'farm', name: '洞府', render: renderFarm },
     { id: 'craft', name: '丹器', render: renderCraft },
@@ -53,11 +69,17 @@ export const VIEWS = {
     { id: 'tradehouse', name: '交易行', render: renderTradehouse },
     { id: 'social', name: '势力', render: renderSocial },
     { id: 'character', name: '人物', render: renderCharacter },
+    { id:'build',name:'配装战术',render:renderBuild },
     { id: 'research', name: '灵科', render: renderResearch },
     { id: 'companion', name: '道侣', render: renderCompanion },
     { id: 'reincarnation', name: '轮回', render: renderReincarnation },
+    { id: 'shards', name: '碎片商店', render: renderShards },
   ],
   [SIDE.MODERN]: [
+    { id: 'home', name: '首页', render: renderHome },
+    { id: 'gate', name: '界门', render: renderGate },
+    {id:'events',name:'奇闻与世界',render:renderExploration},
+    { id: 'cultivation', name: '修炼', render: renderCultivation },
     { id: 'modern', name: '事业', render: renderModern },
     { id: 'estate', name: '地产', render: renderEstate },
     { id: 'lifestyle', name: '生活', render: renderLifestyle },
@@ -65,13 +87,15 @@ export const VIEWS = {
     { id: 'tradehouse', name: '交易行', render: renderTradehouse },
     { id: 'social', name: '势力', render: renderSocial },
     { id: 'character', name: '人物', render: renderCharacter },
+    { id:'build',name:'配装战术',render:renderBuild },
     { id: 'research', name: '灵科', render: renderResearch },
     { id: 'companion', name: '道侣', render: renderCompanion },
     { id: 'reincarnation', name: '轮回', render: renderReincarnation },
+    { id: 'shards', name: '碎片商店', render: renderShards },
   ],
 };
 
-let ui = { view: 'cultivation' };
+let ui = { view: 'home' };
 let stateRef = null;
 let pending = false;
 let lastTaleId = null;
@@ -83,8 +107,11 @@ const ctx = {
   modal: (opts) => domModal(opts),
   closeOverlay: () => closeOverlay(),
   showToast,
+  navigate: (view) => navigate(view),
+  offlineReport: null,
   ascendModal: () => openAscendModal(),
   fateModal: () => openFateModal(),
+  taleModal: () => openTaleModal(pendingTale(stateRef)),
 };
 
 export function scheduleRender() {
@@ -93,11 +120,45 @@ export function scheduleRender() {
   requestAnimationFrame(() => { pending = false; render(); });
 }
 
+export function navigate(view) {
+  if (isCrossing()) return;
+  const list = viewsOf(stateRef);
+  if (['exploration', 'relations', 'management'].includes(view)) {
+    const targets = { exploration: ['events','dungeon'], relations: ['social', 'companion'], management: ['market', 'farm', 'modern'] };
+    view = targets[view].find(id => list.some(v => v.id === id)) || 'gate';
+  }
+  if (view !== 'more' && !list.some(v => v.id === view)) {
+    const other = stateRef.side === SIDE.MODERN ? '修仙界' : '现代都市';
+    showToast(`该玩法位于${other}，请先在界门确认穿越。`);
+    ui.view = 'gate';
+  } else ui.view = view;
+  scheduleRender();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function navGroup(view) {
+  if (['cultivation','character','build'].includes(view)) return 'cultivation';
+  if (['dungeon','events'].includes(view)) return 'exploration';
+  if (['farm','craft','market','modern','estate','lifestyle'].includes(view)) return 'management';
+  if (['social','companion'].includes(view)) return 'relations';
+  return ['home','gate'].includes(view) ? view : 'more';
+}
+function primaryNav(s) {
+  return [ {id:'cultivation',name:'修炼'}, {id:'exploration',name:'探索'},
+    {id:'management',name:'经营'}, {id:'relations',name:'势力'}, {id:'more',name:'更多'} ];
+}
+function moreView(s) {
+  return panel('所有玩法', SIDE_NAME[s.side], h('div.menu-grid', null,
+    viewsOf(s).filter(v => !['home','gate'].includes(v.id)).map(v => h('button.menu-entry', {
+      text:v.name, onclick:()=>navigate(v.id),
+    }))),h('p.t-xs.t-dim.mt-3',{text:'灵田、牧场与灵兽在「洞府」；装备与功法在「人物」；宗门与道盟在「势力」。'}));
+}
+
 function viewsOf(s) { return VIEWS[s.side] || VIEWS[SIDE.CULTIVATION]; }
 
 function ensureValidView(s) {
   const list = viewsOf(s);
-  if (!list.some((v) => v.id === ui.view)) ui.view = list[0].id;
+  if (ui.view !== 'more' && !list.some((v) => v.id === ui.view)) ui.view = list[0].id;
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,7 +178,35 @@ function attrsFast(s) {
 function liveValue(key) {
   const s = stateRef;
   if (!s) return '';
+  if (key.startsWith('investment:')) { const [,kind,id] = key.split(':'); return !investmentAllowed(s,kind,id); }
+  if (key.startsWith('projectNotReady:')) return !cityStatus(s,key.split(':')[1])?.canStart;
+  if (key.startsWith('researchNotReady:')) return !canResearch(s,key.split(':')[1]).ok;
+  if (key.startsWith('farm')) {
+    const [kind, index] = key.split(':'), p = s.farm.plots[Number(index)];
+    if (kind === 'farmNotReady') return !p || p.readyAt > s.world.clockMs;
+    if (kind === 'farmTime') return p ? p.readyAt <= s.world.clockMs ? '已成熟 · 可以收获' : `距成熟 ${fmtDuration(p.readyAt - s.world.clockMs)}` : '空地';
+    if (kind === 'farmRatio') return p ? Math.max(0, Math.min(1, (s.world.clockMs - p.plantedAt) / (p.readyAt - p.plantedAt))) : 0;
+  }
+  if (key.startsWith('ranch')) {
+    const [kind, index] = key.split(':'), slot = s.ranch.slots[Number(index)], b = RANCH_MAP[slot?.beastId];
+    if (kind === 'ranchTime') return b ? `下批产出 ${fmtDuration(Math.max(0, b.cycleMs - (slot.acc || 0)))}` : '';
+    if (kind === 'ranchRatio') return b ? (slot.acc || 0) / b.cycleMs : 0;
+  }
   switch (key) {
+    case 'investmentAvailable': return `可投资 ¥${fmtInt(investmentBudget(s,0).available)}`;
+    case 'cityGoalMissing': { const st = targetProject(s); return st ? `还需灵石 ${fmtInt(st.missing.stone)} · 可投资资金缺口 ¥${fmtInt(st.missing.cny)} · 材料 ${st.mats.filter(m=>m.have<m.need).map(m=>`${m.name}缺${m.need-m.have}`).join('、') || '已备齐'}` : '工程目标已完成。'; }
+    case 'alchemyAutoStatus': {
+      if (!researchEffects(s).autoAlchemy) return '研究「自动炼丹机」后解锁。';
+      if (!s.crafting.autoAlchemy) return '机器已暂停。';
+      const st = alchemyPlan(s);
+      const waiting = !st.ok ? st.reason : s.currency.stone - st.cost < (s.crafting.reserveStone || 0) ? '资金保留线' : '';
+      return `${waiting ? `等待：${waiting}` : `运行：${st.recipe.name} · ${st.aux.name}`} · 下次检查 ${fmtDuration(nextAlchemyEvent(s))}`;
+    }
+    case 'goalEta': return progressEta(s);
+    case 'goalMissing': { const p=stageProgress(s); return `还需 ${fmtInt(Math.max(0,p.need-p.cur))} 修为${p.isTop?' · 跨境界需手动突破':''}`; }
+    case 'leisureStatus': return `${s.farm.plots.filter(p=>p && p.readyAt<=s.world.clockMs).length} 块灵田可收获 · 牧场待收 ${s.ranch.slots.reduce((n,x)=>n+(x?.pending||0),0)} 件`;
+    case 'noHarvest': return !s.farm.plots.some(p=>p && p.readyAt<=s.world.clockMs);
+    case 'noRanch': return !s.ranch.slots.some(x=>x?.pending>0);
     case 'stone': return fmtInt(s.currency.stone);
     case 'cny': return '¥' + fmtInt(s.currency.cny);
     case 'cultRate': return fmtShort(cultivationRate(s, attrsFast(s)));
@@ -140,8 +229,9 @@ function liveValue(key) {
       const cap = carryCapacity(s);
       return `载重 ${fmtKg(carryWeight(s))} / ${cap} kg`;
     }
-    case 'staminaBar': return s.player.stamina / 100;
-    case 'staminaText': return `${Math.floor(s.player.stamina)} / 100`;
+    case 'staminaBar': return s.player.stamina / staminaMax(s);
+    case 'staminaText': return `${Math.floor(s.player.stamina)} / ${staminaMax(s)}`;
+    case 'staminaRecovery': return staminaEta(s, true) > 0 ? `${fmtDuration(staminaEta(s, true))} 后恢复 1 点 · ${fmtDuration(staminaEta(s))} 后回满（世界时间）` : '体力已满';
     default: return undefined;
   }
 }
@@ -156,9 +246,11 @@ export function openTaleModal(tale) {
     h('p.t-sm', { text: tale.text }),
     h('div.mt-4', null, tale.choices.map((c, i) => h('button.btn.btn-block.mt-2', {
       style: 'text-align:left;white-space:normal;line-height:1.6',
-      text: c.label,
-      onclick: () => {
-        const res = resolveTale(s, i);
+      text: c.label + (taleChoiceStatus(s, c).ok ? '' : ' · 资金不足'),
+      disabled: !taleChoiceStatus(s, c).ok,
+      onclick: async () => {
+        const res = await resolveTale(s, i);
+        if (!res.ok) { showToast(res.reason, 'warn'); return; }
         closeOverlay();
         if (res.ok) {
           domModal({
@@ -177,20 +269,21 @@ export function openTaleModal(tale) {
     subtitle: s.side === SIDE.CULTIVATION ? '修仙界' : '现代都市',
     sticky: true,
     body,
-    actions: [],
+    actions: [{ label: '稍后处理' }],
   });
 }
 
 export function openAscendModal() {
   const s = stateRef;
+  if (!canAscend(s)) { showToast('请先在修炼页圆满修为并渡过雷劫。', 'warn'); return; }
   const preview = ascensionPreview(s);
   domModal({
     title: '飞升轮回',
     subtitle: '九重雷劫已过。两个世界同时在你脚下。',
     sticky: true,
     body: h('div', null,
-      h('p.t-sm', { text: '飞升会重置本世的境界、货币、背包、装备、功法、灵田、牧场、灵兽、副本进度与地产。' }),
-      h('p.t-sm.t-dim.mt-2', { text: '保留：轮回点、境界图鉴、永久天赋、道侣缘分、灵科研究。' }),
+      h('p.t-sm', { text: `重置：${ASCENSION_RESET}。` }),
+      h('p.t-sm.t-dim.mt-2', { text: `保留：${ASCENSION_KEEP}。` }),
       h('hr.hr'),
       ...preview.parts.map((p) => h('div.flex-between', { style: 'padding:3px 0' },
         h('span.t-sm.t-dim', { text: p.label }),
@@ -206,10 +299,10 @@ export function openAscendModal() {
       {
         label: '飞升',
         primary: true,
-        onClick: () => {
-          const r = ascend(s);
+        onClick: async () => {
+          const r = await ascend(s);
           if (!r.ok) { showToast(r.reason, 'warn'); return; }
-          ui.view = 'cultivation';
+          ui.view = 'home';
           scheduleRender();
           openFateModal();
         },
@@ -220,12 +313,13 @@ export function openAscendModal() {
 
 export function openFateModal() {
   const s = stateRef;
+  if (!fateChoicePending(s)) return;
   domModal({
     title: '天命',
     subtitle: '每一次轮回，都换一种活法。',
     sticky: true,
     body: h('div', null,
-      h('p.t-sm.t-dim.mb-3', { text: '天命永久生效，只能选一个。它决定你下一轮最舒服的路线。' }),
+      h('p.t-sm.t-dim.mb-3', { text: '天命本世生效，开局资源只领取一次；下一次轮回可以重选。' }),
       ...FATES.map((f) => h('div.rowitem', null,
         h('div.rowitem-main', null,
           h('div.rowitem-title', null, h('span.rowitem-name.t-serif', { text: `${f.icon} · ${f.name}` })),
@@ -235,8 +329,9 @@ export function openFateModal() {
         h('div.rowitem-act', null,
           h('button.btn.btn-sm.btn-solid', {
             text: '择此天命',
-            onclick: () => {
-              chooseFate(s, f.id);
+            onclick: async () => {
+              const r = await chooseFate(s, f.id);
+              if (!r.ok) { showToast(r.reason, 'warn'); return; }
               closeOverlay();
               scheduleRender();
             },
@@ -253,74 +348,23 @@ export function openFateModal() {
 /* ------------------------------------------------------------------ */
 function leftColumn(s) {
   const attrs = computeAttrs(s);
-  const prog = stageProgress(s);
   const info = stageInfo(s.player.stage);
   const path = getPath(s.path);
-  const bi = breakthroughInfo(s);
 
-  const charCard = panel('修为', h('span', { text: `${fmtShort(cultivationRate(s, attrs))} / 秒` }),
-    h('div.flex-between', null,
-      h('div', null,
-        h('div.t-serif', { style: 'font-size:17px;font-weight:600', text: `${info.realm.name} · ${info.stage.name}` }),
-        h('div.t-xs.t-dim', { text: path ? `${path.icon} ${path.name}` : '未择道' }),
-      ),
-      h('div.t-right', null,
-        h('div.t-xs.t-dim', { text: '战力' }),
-        h('div.t-num', { text: fmtInt(combatPower(s)) }),
-      ),
+  return h('div.flex-col.gap-4', null,
+    panel('行者档案', `第 ${(s.reincarnation.count || 0) + 1} 世`,
+      accountIdentity(),
+      h('div.avatar-seal', {text:'墨'}), h('h2.t-center.mt-2', {text:info.stage.name}),
+      h('p.t-sm.t-center.t-dim.mt-1', {text:path ? `${path.icon} ${path.name}` : '道途未定'}),
+      h('dl.kv',null,h('dt',{text:'战力'}),h('dd.t-num',{text:fmtInt(combatPower(s))})),
+      h('dl.kv',null,h('dt',{text:'气血'}),h('dd.t-num',{text:`${fmtInt(s.player.hp ?? attrs.hpMax)} / ${fmtInt(attrs.hpMax)}`})),
+      h('dl.kv',null,h('dt',{text:'真元'}),h('dd.t-num',{text:`${fmtInt(s.player.mp ?? attrs.mpMax)} / ${fmtInt(attrs.mpMax)}`})),
+      h('div.btn-row.mt-3',null,
+        h('button.btn.btn-sm',{text:'装备与功法',onclick:()=>navigate('character')}),
+        h('button.btn.btn-sm',{text:'道侣',onclick:()=>navigate('companion')})),
     ),
-    h('div.mt-3', null,
-      bar(prog.ratio, { liveKey: 'cultBar' }),
-      h('div.bar-cap', null,
-        h('span.t-num', { live: 'cultText' }),
-        h('span', { text: `+${fmtPct(attrs.cultSpeed, 0)}` }),
-      ),
-    ),
-    prog.isTop && bi.available && !bi.locked
-      ? h('button.btn.btn-solid.btn-block.mt-3', {
-        text: bi.ascension ? `飞升（${fmtPct(bi.chance, 1)}）` : `突破 ${bi.toRealm.name}（${fmtPct(bi.chance, 1)}）`,
-        onclick: () => (bi.ascension ? openAscendModal() : breakthroughModal(s, ctx)),
-      })
-      : null,
-  );
-
-  const gate = panel('界门', `Lv.${s.rift.gateLevel}`,
-    h('dl', { style: 'margin:0' },
-      h('dl.kv', null, h('dt', { text: '跨界载重' }), h('dd.t-num', { text: `${carryCapacity(s)} kg` })),
-      h('dl.kv', null, h('dt', { text: '当前负重' }), h('dd.t-num', { live: 'weightText' })),
-      h('dl.kv', null, h('dt', { text: '→ 修仙界' }), h('dd.t-num', { text: `${s.rift.toCultivation} 次` })),
-      h('dl.kv', null, h('dt', { text: '→ 现代都市' }), h('dd.t-num', { text: `${s.rift.toModern} 次` })),
-      h('dl.kv', null, h('dt', { text: '下次刷新' }), h('dd.t-num', { live: 'riftCountdown' })),
-    ),
-    h('p.t-xs.t-dimmer.mt-2', { text: `每日双向各 ${perDirection(s)} 次，未使用可累计。付费无法购买额外界潮次数。` }),
-    h('p.t-xs.t-dimmer.mt-1', {
-      class: isStandard(s) ? 't-jade' : '',
-      text: isStandard(s)
-        ? '标准模式：世界时钟对齐真实时间，界潮每日 05:00 全服统一刷新。'
-        : '沙盒模式：世界时钟按倍率推进，界潮已与全服脱钩。',
-    }),
-  );
-
-  return h('div.flex-col.gap-4', null, charCard, gate, guideCard(s));
-}
-
-function guideCard(s) {
-  const stepIdx = s.tutorial.step || 0;
-  if (stepIdx >= TUTORIAL_STEPS.length) {
-    return panel('新手引导', '已完成',
-      h('p.t-sm.t-dim', { text: '引导已走完。接下来就是把它当成一门生意：每天看行情、带货、变强。' }),
-    );
-  }
-  const step = TUTORIAL_STEPS[stepIdx];
-  return h('section.guidebar', null,
-    h('div.guidebar-main', null,
-      h('div.guidebar-step', { text: `引导 ${stepIdx + 1} / ${TUTORIAL_STEPS.length}` }),
-      h('h3.t-serif', { text: step.title }),
-      h('p.t-sm.mt-1', { text: step.text }),
-      step.id === 'path'
-        ? h('button.btn.btn-sm.btn-solid.mt-2', { text: '择道', onclick: () => pathModal(s, ctx) })
-        : null,
-    ),
+    panel('成长与日常',null,h('div.menu-grid',null,
+      ['cultivation','farm','craft','research','reincarnation'].map(id=>h('button.menu-entry',{text:({cultivation:'修炼',farm:'洞府 · 灵兽',craft:'炼丹 · 炼器',research:'灵科融合',reincarnation:'轮回'})[id],onclick:()=>navigate(id)})))),
   );
 }
 
@@ -345,26 +389,14 @@ function rightColumn(s) {
       );
     }),
     h('div', { style: 'padding:10px 16px;border-top:1px solid var(--line)' },
-      h('div.t-xs.t-dim', { text: '需求系数越高，在对面世界卖得越贵；同时也意味着本地进价更贵。' }),
+      h('div.t-xs.t-dim', { text: '这里显示当前世界需求。另一世界行情与背包估价，请在界门查看。' }),
     ),
-  );
-
-  const bagRows = s.inventory.slice(0, 8);
-  const bagCard = panelFlush('背包', `${fmtKg(carryWeight(s))} / ${carryCapacity(s)} kg`,
-    bagRows.length
-      ? bagRows.map((e) => h('div.rowitem', { style: 'padding:8px 16px' },
-        h('div.rowitem-main', null,
-          h('span.t-sm', { text: getItem(e.itemId)?.name || e.itemId }),
-        ),
-        h('div.rowitem-act', null, h('span.t-num.t-xs', { text: `×${e.qty}` })),
-      ))
-      : h('div.empty', { text: '背包是空的。' }),
   );
 
   const logCard = panelFlush('记事', null,
     h('div.scroll', { style: 'max-height:320px;padding:0 16px' },
       s.log.length
-        ? h('div.log-list', null, s.log.slice(-40).reverse().map((l) => h('div.log-item', { class: l.kind },
+        ? h('div.log-list', null, s.log.slice(-12).reverse().map((l) => h('div.log-item', { class: l.kind },
           h('span.lt', { text: clockHM(l.t) }),
           h('span.lm', { text: l.m }),
         )))
@@ -372,7 +404,7 @@ function rightColumn(s) {
     ),
   );
 
-  return h('div.flex-col.gap-4', null, marketCard, bagCard, logCard);
+  return h('div.flex-col.gap-4', null, panel('今日界潮', null, h('p.t-sm',{text:`→ 修仙界 ${s.rift.toCultivation} 次 · → 现代 ${s.rift.toModern} 次`}), h('p.t-xs.t-dim.mt-2',{live:'riftCountdown'}),h('button.btn.btn-block.mt-3',{text:'查看界门与背包',onclick:()=>navigate('gate')})), marketCard, logCard);
 }
 
 /* ------------------------------------------------------------------ */
@@ -382,15 +414,16 @@ function midColumn(s) {
   ensureValidView(s);
   const list = viewsOf(s);
 
-  const tabs = h('div.viewtabs', null,
-    list.map((v) => h('button.viewtab', {
-      class: ui.view === v.id ? 'on' : '',
-      text: v.name,
-      onclick: () => { ui.view = v.id; scheduleRender(); },
-    })),
-  );
-
-  const view = list.find((v) => v.id === ui.view) || list[0];
+  const currentGroup = navGroup(ui.view);
+  const tabs = h('nav.viewtabs', {'aria-label':'主要玩法'}, primaryNav(s).map(v=>h('button.viewtab',{
+    class:currentGroup===v.id?'on':'', text:v.name, 'aria-current':currentGroup===v.id?'page':null,
+    onclick:()=>navigate(v.id),
+  })));
+  const secondary = list.filter(v=>navGroup(v.id)===currentGroup && !['home','gate'].includes(v.id));
+  const subtabs = ['cultivation','exploration','management','relations'].includes(currentGroup) ? h('nav.subtabs',{'aria-label':'玩法分类'},secondary.map(v=>h('button.subtab',{
+    text:v.id==='dungeon' && s.player.stage<2 ? '秘境 · 炼气三层开放' : v.name,class:ui.view===v.id?'on':'',onclick:()=>navigate(v.id),
+  }))) : null;
+  const view = ui.view==='more' ? {id:'more',render:moreView} : list.find(v=>v.id===ui.view) || list[0];
   let body = null;
   try {
     body = view.render(s, ctx);
@@ -399,7 +432,9 @@ function midColumn(s) {
     body = panel('出错了', null, h('p.t-sm', { text: String(e && e.message || e) }));
   }
 
-  return h('div.flex-col.gap-4', null, tabs, body);
+  return h('div.flex-col.gap-4', null, h('nav.btn-row', {'aria-label':'首页与跨界'},
+    h('button.btn.btn-sm', {text:'首页',onclick:()=>navigate('home')}),
+    h('button.btn.btn-sm', {text:'界门',onclick:()=>navigate('gate')})), tabs, subtabs, body);
 }
 
 /* ------------------------------------------------------------------ */
@@ -409,35 +444,36 @@ export function render() {
   const s = stateRef;
   if (!s) return;
   resetLive();
+  document.body.dataset.world = s.side;
   renderHeader(s, ctx);
   mount(document.getElementById('col-left'), leftColumn(s));
   mount(document.getElementById('col-mid'), midColumn(s));
   mount(document.getElementById('col-right'), rightColumn(s));
 
   const nav = document.getElementById('mobilenav');
-  const list = viewsOf(s);
   mount(nav, h('div.mobilenav-inner', null,
-    list.map((v) => h('button', {
-      class: ui.view === v.id ? 'on' : '',
-      onclick: () => {
-        ui.view = v.id;
-        scheduleRender();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      },
-    },
-      h('span', { text: v.name }),
-      h('span.mn-dot', { class: ui.view === v.id ? '' : 'hidden' }),
-    )),
+    primaryNav(s).map(v=>h('button',{
+      class:navGroup(ui.view)===v.id?'on':'', 'aria-current':navGroup(ui.view)===v.id?'page':null,
+      onclick:()=>navigate(v.id),
+    },h('span',{text:v.id==='gate'?'◈':v.id==='home'?'⌂':v.id==='cultivation'?'◇':v.id==='modern'?'▦':'···'}),h('span',{text:v.name}))),
   ));
+  refreshLive(liveValue);
 }
 
-export function initApp(state) {
+export function initApp(state, offlineReport = null) {
   stateRef = state;
+  ctx.offlineReport = offlineReport;
+  initChat();
 
   on(EV.TICK, () => {
     refreshLive(liveValue);
+    if (isCrossing()) return;
+    if (fateChoicePending(stateRef)) {
+      if (!document.getElementById('overlay-root').childElementCount) openFateModal();
+      return;
+    }
     const tale = pendingTale(stateRef);
-    if (tale && stateRef.tales.pending?.id !== lastTaleId) {
+    if (tale && !document.getElementById('overlay-root').childElementCount && stateRef.tales.pending?.id !== lastTaleId) {
       lastTaleId = stateRef.tales.pending?.id;
       openTaleModal(tale);
     }
@@ -449,7 +485,11 @@ export function initApp(state) {
   on(EV.BATTLE, scheduleRender);
   on(EV.BREAKTHROUGH, scheduleRender);
   on(EV.OVERLAY, (p) => {
-    if (p && p.kind === 'tale' && p.tale) {
+    if (fateChoicePending(stateRef)) {
+      if (!isCrossing() && !document.getElementById('overlay-root').childElementCount) openFateModal();
+      return;
+    }
+    if (p && p.kind === 'tale' && p.tale && !isCrossing() && !document.getElementById('overlay-root').childElementCount) {
       lastTaleId = p.tale.id;
       openTaleModal(p.tale);
     }

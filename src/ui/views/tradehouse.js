@@ -2,28 +2,29 @@
  * views/tradehouse.js —— 玩家交易行（GDD 15，NPC 模拟）
  */
 
+import { isAuthoritative } from '../../core/authority.js';
+import { renderPlayerExchange } from './community.js';
 import { h, panel, panelFlush, bar, showToast } from '../dom.js';
 import { TRADEHOUSE } from '../../data/tradehouse.js';
 import { QUALITY_MAP } from '../../data/dungeons.js';
-import {
-  tradehouseSummary, listableItems, list, unlist, expandSlots,
-  referencePrice, throughput,
-} from '../../systems/tradehouse.js';
+import { tradehouseSummary, listableItems, referencePrice, throughput } from '../../systems/tradehouse.js';
+import { tradehouse_list as list, tradehouse_unlist as unlist, tradehouse_expandSlots as expandSlots } from '../commands.js';
 import { fmtInt, fmtDuration, fmtPct } from '../../core/util.js';
 
 /* UI 局部状态（不存档） */
 let ui = { itemUid: null, ratio: 1.0, currency: 'stone', qty: 0 };
 
-export function renderTradehouse(state, ctx) {
+function renderNpcTradehouse(state, ctx) {
   const s = tradehouseSummary(state);
   const items = listableItems(state);
 
   if (!ui.itemUid && items.length) ui.itemUid = items[0].uid;
   const sel = items.find((r) => r.uid === ui.itemUid) || items[0] || null;
+  if (sel && ui.itemUid !== sel.uid) { ui.itemUid = sel.uid; ui.qty = sel.qty; }
   if (sel && (!ui.qty || ui.qty > sel.qty)) ui.qty = sel.qty;
 
   const ref = sel ? referencePrice(state, sel.itemId, ui.currency, sel.quality) : 0;
-  const unit = Math.round(ref * ui.ratio);
+  const unit = Math.max(1, Math.round(ref * ui.ratio));
   const fee = Math.round(unit * (ui.qty || 0) * s.feeRate);
   const speed = sel
     ? TRADEHOUSE.baseThroughput * TRADEHOUSE.speedFactor(ui.ratio) * s.speedMul
@@ -32,7 +33,7 @@ export function renderTradehouse(state, ctx) {
 
   /* ---------- 上架表单 ---------- */
   const form = panel('上架', `成交速度 ×${s.speedMul.toFixed(2)}`,
-    h('p.t-sm.t-dim', { text: '交易行的意义在于：不用跨界，也能把货换成另一侧的货币。代价是参考价打了 8.5 折，而且定价越高卖得越慢。' }),
+    h('p.t-sm.t-dim', { text: 'NPC 模拟交易：委托由本地规则撮合，不会卖给真实玩家；参考价打 8.5 折，而且定价越高卖得越慢。登录账号的NPC委托也由服务器结算，收益与玩家挂单分开显示。' }),
 
     h('div.t-xs.t-dim.mt-3.mb-1', { text: '① 选择货物' }),
     items.length
@@ -80,7 +81,7 @@ export function renderTradehouse(state, ctx) {
         h('dl.kv', null, h('dt', { text: '参考价（8.5 折后）' }), h('dd.t-num', { text: `${fmtInt(ref)} ${ui.currency === 'cny' ? '¥' : '灵石'}` })),
         h('dl.kv', null, h('dt', { text: '你的定价' }), h('dd.t-num.t-strong', { text: `${fmtInt(unit)} ${ui.currency === 'cny' ? '¥' : '灵石'}` })),
         h('dl.kv', null, h('dt', { text: '相对参考价' }), h('dd.t-num', { text: `×${ui.ratio.toFixed(2)}` })),
-        h('dl.kv', null, h('dt', { text: '上架税费' }), h('dd.t-num', { text: `${fmtInt(fee)} 灵石（${fmtPct(s.feeRate, 1)}）` })),
+        h('dl.kv', null, h('dt', { text: '上架税费' }), h('dd.t-num', { text: `${fmtInt(fee)} ${ui.currency === 'cny' ? '人民币' : '灵石'}（${fmtPct(s.feeRate, 1)}，按收款货币支付）` })),
         h('dl.kv', null, h('dt', { text: '预计成交速度' }), h('dd.t-num', { text: `${speed.toFixed(2)} 件 / 时` })),
         h('dl.kv', null, h('dt', { text: '预计清空' }), h('dd.t-num', { text: isFinite(etaMs) ? fmtDuration(etaMs) : '—' })),
       ),
@@ -88,9 +89,9 @@ export function renderTradehouse(state, ctx) {
       h('div.btn-row.mt-3', null,
         h('button.btn.btn-solid', {
           text: `上架 ${ui.qty} 件`,
-          disabled: !s.canList || state.currency.stone < fee,
-          onclick: () => {
-            const r = list(state, ui.itemUid, ui.qty, ui.ratio, ui.currency);
+          disabled: !s.canList || state.currency[ui.currency] < fee,
+          onclick: async () => {
+            const r = await list(state, ui.itemUid, ui.qty, ui.ratio, ui.currency);
             if (!r.ok) { showToast(r.reason, 'warn'); return; }
             ui.itemUid = null;
             ctx.rerender();
@@ -116,7 +117,7 @@ export function renderTradehouse(state, ctx) {
           h('div.mt-2', null, bar(l.sold / l.qty)),
         ),
         h('div.rowitem-act', null,
-          h('button.btn.btn-sm.btn-ghost', { text: '撤单', onclick: () => { unlist(state, l.uid); ctx.rerender(); } }),
+          h('button.btn.btn-sm.btn-ghost', { text: '撤单', onclick: async () => { await unlist(state, l.uid); ctx.rerender(); } }),
         ),
       ))
       : h('div.empty', { text: '摊位上还没有东西。' }),
@@ -126,7 +127,7 @@ export function renderTradehouse(state, ctx) {
           ? h('button.btn.btn-sm', {
             text: `扩充摊位（${fmtInt(s.slotCost)} 灵石）`,
             disabled: state.currency.stone < s.slotCost,
-            onclick: () => { const r = expandSlots(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+            onclick: async () => { const r = await expandSlots(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
           })
           : h('span.t-xs.t-dim', { text: `摊位已扩到上限 ${s.maxSlots} 个` }),
       ),
@@ -140,3 +141,9 @@ export function renderTradehouse(state, ctx) {
 }
 
 export function resetTradehouseUI() { ui = { itemUid: null, ratio: 1.0, currency: 'stone', qty: 0 }; }
+
+let tradeTab='players';
+export function renderTradehouse(state,ctx){
+  if(!isAuthoritative(state))return renderNpcTradehouse(state,ctx);
+  return h('div.flex-col.gap-4',null,h('div.subtabs',null,...[['players','玩家交易'],['npc','NPC委托']].map(([id,name])=>h('button.subtab',{text:name,class:tradeTab===id?'on':'',onclick:()=>{tradeTab=id;ctx.rerender();}}))),tradeTab==='players'?renderPlayerExchange(state,ctx):renderNpcTradehouse(state,ctx));
+}

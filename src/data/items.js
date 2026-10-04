@@ -77,7 +77,7 @@ export const TRADE_ITEMS = [
     weight: 0.6,
     capacity: { cultivation: 12, modern: 8 },
     noBuy: ['cultivation'],
-    desc: '只在极寒灵泉里开两天的花。摘下来就开始化，所以必须当天跨界。',
+    desc: '只在极寒灵泉里开两天的花。收获后可保存在背包，供灵元丹、渡劫丹或跨界贸易。',
   },
   {
     id: 'jiuzhuan', name: '九转还魂草', cat: 'herb', origin: 'cultivation',
@@ -181,6 +181,7 @@ export const MATERIALS = [
 
 /* ================= 消耗品 ================= */
 export const CONSUMABLES = [
+ {id:'shilingdan',name:'蚀灵丹',cat:'pill',price:{cultivation:180},weight:.1,effect:{type:'battle_poison',add:.03,durationMs:3600000},desc:'一小时内激活毒丹流；命中叠毒，最多五层。需丹修与药性数据库；普通攻击降低15%。'},
   {
     id: 'zhujidan', name: '筑基丹', cat: 'pill', price: { cultivation: 300 },
     weight: 0.1,

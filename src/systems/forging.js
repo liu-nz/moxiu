@@ -14,6 +14,7 @@ import { countCraft } from './daily.js';
 import { logGood, logWarn, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt, clamp } from '../core/util.js';
+import { markCollection } from './collection.js';
 
 export function unlockedRecipes(state) {
   return FORGE_RECIPES.filter((r) => state.player.stage >= r.unlockStage);
@@ -76,6 +77,7 @@ export function forge(state, id, slotId) {
     upgraded = true;
   }
   const eq = rollEquipment(slotId, tier, forgeScale(state));
+  markCollection(state, 'equipment', `${eq.slot}:${eq.tier}`);
   eq.forged = true;
   state.bag.push(eq);
   state.crafting.totalForged += 1;

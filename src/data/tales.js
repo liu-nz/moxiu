@@ -1,3 +1,4 @@
+import {worldState} from './worldStates.js';
 /**
  * tales.js —— 奇闻事件（GDD 14.1）
  *
@@ -6,7 +7,36 @@
  * 避免后期遇到「捡到 50 灵石」这种毫无意义的文本。
  */
 
+import { EXTRA_TALES } from './tales-extra.js';
+import { STORY_TALES } from './stories.js';
+
 export const TALES = [
+  ...EXTRA_TALES,
+  ...STORY_TALES,
+  {
+    id: 'sealed_letter', name: '封存的来信', world: 'any', arc: 'broken_relay', blockedFlag: 'broken_relay',
+    text: '界门附近的旧驿站夹着一封未寄出的信。纸上只有一句：“若两界仍能互通，请把这封信交给青云城的药师。”',
+    choices: [
+      { label: '替寄信人送到药师手里', result: '你把信收进衣襟，决定沿着留下的印记追查寄信人。', effect: { rp: 3 }, flags: { broken_relay: 'deliver' } },
+      { label: '先交给驿站保管', result: '驿站老板认得纸上的徽记，答应查一查旧账簿。', effect: { cny: 100, scale: true }, flags: { broken_relay: 'archive' } },
+    ],
+  },
+  {
+    id: 'sealed_letter_followup', name: '药师的回信', world: 'cultivation', arc: 'broken_relay', requiresFlag: 'broken_relay:deliver', blockedFlag: 'broken_relay_ending',
+    text: '青云城的药师认出信上的字迹。那是多年前失踪的弟子写的，信里记着一批留给病患的灵药。',
+    choices: [
+      { label: '把药材交给城中义诊', result: '义诊棚收下药材，药师答应将弟子的事继续查下去。', effect: { items: [{ id: 'huangjing', qty: 2 }] }, flags: { broken_relay_ending: 'aid' } },
+      { label: '请药师继续寻找弟子', result: '药师留下联络暗号，约定找到人后再告知你。', effect: { rp: 8 }, flags: { broken_relay_ending: 'search' } },
+    ],
+  },
+  {
+    id: 'sealed_letter_archive', name: '驿站旧账', world: 'modern', arc: 'broken_relay', requiresFlag: 'broken_relay:archive', blockedFlag: 'broken_relay_ending',
+    text: '驿站老板翻出一册旧账：当年有人带着药材穿过界门，之后再没回来。信件地址仍指向青云城。',
+    choices: [
+      { label: '亲自把信送去', result: '旧账里附着一枚通行符。老板托你把信和符一并送回修仙界。', effect: { cny: 120, scale: true }, flags: { broken_relay_ending: 'carry' } },
+      { label: '留下通行符作纪念', result: '你把通行符收入收藏，信件留在驿站等待下一位旅人。', effect: { rp: 6 }, flags: { broken_relay_ending: 'keep' } },
+    ],
+  },
   /* ================= 修仙界 ================= */
   {
     id: 'ancient_book', name: '古书残卷', world: 'cultivation',
@@ -448,12 +478,12 @@ export const TALES = [
 
 export const TALE_MAP = Object.fromEntries(TALES.map((t) => [t.id, t]));
 
-export function talesFor(world, stage) {
-  return TALES.filter((t) => t.world === 'any' || t.world === world);
+export function talesFor(world, stage, state = null) {
+  const context = { farm: state?.farm?.plots?.some(Boolean), ranch: state?.ranch?.slots?.some(Boolean), pet: state?.beasts?.deployed?.length > 0, research: Object.values(state?.research?.done || {}).some(Boolean), estate: Object.values(state?.estate?.owned || {}).some(n => n > 0), shop: state?.estate?.shops > 0, companion: Object.values(state?.companions || {}).some(c => c.affection >= 20) };
+  return TALES.filter(t => (t.world === 'any' || t.world === world) && stage >= (t.minStage || 0) && (!t.minReincarnation || (state?.reincarnation?.count || 0) >= t.minReincarnation) && (!t.companion || (state?.companions?.[t.companion]?.affection || 0) >= t.affection) && (!t.context || context[t.context]) && (!t.worldState || (state && worldState(state).id===t.worldState)) && (!t.requiresAnyFlag || !!state?.tales?.flags?.[t.requiresAnyFlag]) && (!t.blockedFlag || !state?.tales?.flags?.[t.blockedFlag]) && (!t.requiresFlag || state?.tales?.flags?.[t.requiresFlag.split(':')[0]] === t.requiresFlag.split(':')[1]));
 }
 
-/** 奇闻触发频率：每游戏内小时的概率（受福缘影响） */
+/** 机会之间的最短间隔；每日2–4次机会由系统排定。 */
 export const TALE_RATE = {
-  perHour: 0.16,
-  minGapMs: 25 * 60 * 1000,
+  minGapMs: 3 * 60 * 60 * 1000,
 };

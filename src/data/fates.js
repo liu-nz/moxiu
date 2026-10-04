@@ -10,26 +10,26 @@ import { projectEffects } from './projects.js';
 export const FATES = [
   {
     id: 'merchant', name: '商道天命', icon: '商',
-    effect: '开局自带启动资金，贸易利润 +50%，但修炼速度 -20%',
+    effect: '开局自带启动资金，贸易利润 +50%，但修炼速度 -20%；任意道途均可使用商修锁价',
     mods: { tradeProfitAdd: 0.50, cultSpeedAdd: -0.20, startCny: 50000, startStone: 2000 },
     fit: '适合经商流',
   },
   {
     id: 'alchemy', name: '丹道天命', icon: '丹',
-    effect: '开局自带炼丹房和种子，炼丹效果 +40%，但战斗能力 -15%',
-    mods: { alchemyAdd: 0.40, atkMul: -0.15, startSeeds: true, startPlots: 2 },
+    effect: '开局灵田 +2 块，炼丹成功率 +40%，但攻击 -15%；副本每四回合恢复2%气血',
+    mods: { alchemyAdd: 0.40, atkMul: -0.15, startPlots: 2 },
     fit: '适合炼丹流',
   },
   {
     id: 'war', name: '战道天命', icon: '战',
-    effect: '开局自带灵器武器，攻击 +30%，但店铺收入 -30%',
+    effect: '开局自带灵器武器，攻击 +30%，但店铺收入 -30%，首领蓄力伤害额外+10%',
     mods: { atkMul: 0.30, shopIncomeMul: -0.30, startWeaponTier: 1 },
     fit: '适合战斗流',
   },
   {
     id: 'speed', name: '速道天命', icon: '速',
-    effect: '修炼速度 +40%，但寿命 -20%，需要更快突破',
-    mods: { cultSpeedAdd: 0.40, breakthroughAdd: 0.05, lifespanMul: -0.20 },
+    effect: '修炼速度 +40%，突破成功率 +5%；首领蓄力回合优先出手',
+    mods: { cultSpeedAdd: 0.40, breakthroughAdd: 0.05 },
     fit: '适合冲级流',
   },
 ];

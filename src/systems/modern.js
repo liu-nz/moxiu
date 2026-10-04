@@ -11,6 +11,7 @@ import { updateTutorial } from './tutorial.js';
 import { earn } from './daily.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt } from '../core/util.js';
+import { investmentBudget } from './finance.js';
 
 export function jobIncomePerHour(state) {
   if (!state.modern.job || !state.modern.workOn) return 0;
@@ -36,6 +37,7 @@ export function tickModern(state, dtMs) {
   const gain = totalIncomePerHour(state) * hours;
   if (gain <= 0) return 0;
   state.currency.cny += gain;
+  state.stats.passiveCny = (state.stats.passiveCny || 0) + gain;
   earn(state, 'cny', gain);
   state.stats.maxCny = Math.max(state.stats.maxCny || 0, state.currency.cny);
   return gain;
@@ -58,7 +60,8 @@ export function chooseJob(state, jobId) {
 export function upgradeJob(state) {
   if (!state.modern.job) return { ok: false, reason: '先选一份工作。' };
   const cost = jobUpgradeCost(state.modern.job, state.modern.jobLevel);
-  if (state.currency.cny < cost) return { ok: false, reason: `需要 ¥${fmtInt(cost)}。` };
+  const budget = investmentBudget(state, cost);
+  if (!budget.ok) return budget;
   state.currency.cny -= cost;
   state.modern.jobLevel += 1;
   logGood(state, `职级提升至 Lv.${state.modern.jobLevel}，时薪 ¥${jobRate(state.modern.job, state.modern.jobLevel).toFixed(1)}。`);
@@ -70,7 +73,8 @@ export function upgradeBusiness(state) {
   const lv = state.modern.businessLevel;
   if (lv >= BUSINESS.maxLevel) return { ok: false, reason: '商业等级已满。' };
   const cost = BUSINESS.costOf(lv);
-  if (state.currency.cny < cost) return { ok: false, reason: `需要 ¥${fmtInt(cost)}。` };
+  const budget = investmentBudget(state, cost);
+  if (!budget.ok) return budget;
   state.currency.cny -= cost;
   state.modern.businessLevel += 1;
   logGood(state, `商业等级升至 Lv.${state.modern.businessLevel}：进货成本 -${(BUSINESS.buyDiscount(state.modern.businessLevel) * 100).toFixed(0)}%，被动收入 +¥${BUSINESS.passiveIncome(state.modern.businessLevel)}/时。`);
@@ -86,3 +90,20 @@ export function toggleWork(state) {
 }
 
 export { BUSINESS, JOB_MAP, jobRate, jobUpgradeCost };
+
+
+/** 固定当前世界与城市加成，只估算新增被动收入，不折算两界货币。 */
+export function investmentPreview(state) {
+  const mul = sideFactor(state, SIDE.MODERN) * cityMul(state);
+  const job = state.modern.job;
+  const lv = state.modern.jobLevel;
+  const jobCost = job ? jobUpgradeCost(job, lv) : 0;
+  const jobDelta = job && state.modern.workOn ? (jobRate(job, lv + 1) - jobRate(job, lv)) * mul : 0;
+  const bizLv = state.modern.businessLevel;
+  const bizCost = BUSINESS.costOf(bizLv);
+  const bizDelta = bizLv < BUSINESS.maxLevel ? (BUSINESS.passiveIncome(bizLv + 1) - BUSINESS.passiveIncome(bizLv)) * mul : 0;
+  return {
+    job: { cost: jobCost, delta: jobDelta, hours: jobDelta > 0 ? jobCost / jobDelta : Infinity },
+    business: { cost: bizCost, delta: bizDelta, hours: bizDelta > 0 ? bizCost / bizDelta : Infinity },
+  };
+}

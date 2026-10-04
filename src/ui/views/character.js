@@ -1,3 +1,4 @@
+import {affixDescription} from '../../data/affixes.js';
 /**
  * views/character.js —— 人物：属性 / 装备 / 功法 / 背包（GDD 7 / 9）
  */
@@ -7,20 +8,22 @@ import {
   computeAttrs, CAPS, ATTR_NAME, ATTR_IS_PCT, SECONDARY_KEYS,
 } from '../../systems/character.js';
 import { SLOTS, SLOT_MAP, TIER_MAP, tierOf, effectiveStats, equipmentScore } from '../../data/equipment.js';
-import {
-  equipItem, unequip, enhance, enhancePreview, scrapEquipment,
-  equipTech, unequipTech, equipSkill, unequipSkill, upgradeSkill, scrapSkill,
-  SKILL_SLOT_KEYS, SKILL_SLOT_LABEL, slotTypeOf,
-} from '../../systems/gear.js';
+import { enhancePreview, previewBuildSwap, SKILL_SLOT_KEYS, SKILL_SLOT_LABEL, slotTypeOf } from '../../systems/gear.js';
+import { gear_equipItem as equipItem, gear_unequip as unequip, gear_enhance as enhance, gear_scrapEquipment as scrapEquipment, gear_equipTech as equipTech, gear_unequipTech as unequipTech, gear_equipSkill as equipSkill, gear_unequipSkill as unequipSkill, gear_upgradeSkill as upgradeSkill, gear_scrapSkill as scrapSkill } from '../commands.js';
 import { ITEM_MAP, CONSUMABLE_MAP, CATEGORIES, getItem } from '../../data/items.js';
 import { QUALITY_MAP } from '../../data/dungeons.js';
 import { researchEffects } from '../../data/research.js';
-import { useConsumable } from '../../systems/gear.js';
+import { pillDescription } from '../../data/alchemy.js';
+import { gear_useConsumable as useConsumable } from '../commands.js';
 import { skillUpgradeCost } from '../../data/skills.js';
 import {
-  statusSnapshot, exportJSON, exportFileName, importJSON, reset, save,
+  statusSnapshot, exportJSON, exportFileName, importJSON, resetAsync, saveAsync, stopAutoSave, startAutoSave,
 } from '../../core/save.js';
+import { showAccount, accountIdentity } from '../account.js';
 import { fmtInt, fmtPct, fmtSigned, fmtKg } from '../../core/util.js';
+import { collectionSections } from '../../systems/collection.js';
+import { isAuthoritative } from '../../core/authority.js';
+import { refreshGame, resetGame, gameBusy, gameError, gamePending, marketLinked } from '../../core/game.js';
 
 function statText(k, v) {
   if (ATTR_IS_PCT.has(k)) return fmtPct(v, 1);
@@ -35,6 +38,55 @@ function statLines(stats) {
       h('span.t-num', { text: fmtSigned(v, ATTR_IS_PCT.has(k) ? 2 : 0) }),
       h('span.t-dimmer', { text: '　' }),
     ));
+}
+
+function buildChanges(p) {
+  return h('div', null,
+    h('dl.kv', null, h('dt', { text: '估算战力' }), h('dd.t-num', { text: `${fmtInt(p.powerBefore)} → ${fmtInt(p.powerAfter)}` })),
+    ...p.changes.filter((x) => ATTR_NAME[x.key]).map((x) => h('dl.kv', null,
+      h('dt', { text: ATTR_NAME[x.key] }),
+      h('dd.t-num', { text: `${statText(x.key, x.before)} → ${statText(x.key, x.after)}` }))),
+    !p.changes.length ? h('p.t-xs.t-dim', { text: '总属性没有变化，可能已达到属性上限。' }) : null,
+  );
+}
+
+function confirmBuildSwap(state, ctx, kind, uid, key) {
+  let p = previewBuildSwap(state, kind, uid, key);
+  if (!p.ok) { showToast(p.reason, 'warn'); return; }
+  const body = h('div');
+  const draw = (changed = false) => body.replaceChildren(
+    h('p.t-sm.mb-2', { text: `${p.old?.name || '空槽位'} → ${p.item.name}` }),
+    buildChanges(p),
+    h('p.t-xs.t-dim.mt-2', { text: changed ? '配装已变化，预览已更新，请再次确认。' : '按整套属性与当前上限比较；估算战力用于参考，原配装会回到库中。' }));
+  draw();
+  const signature = (v) => JSON.stringify([v.old, v.item, v.before, v.after]);
+  ctx.modal({ title: kind === 'skill' ? '功法替换预览' : '装备替换预览', body,
+    actions: [{ label: '取消' }, { label: '确认替换', primary: true, keepOpen: true, onClick: async () => {
+      const current = previewBuildSwap(state, kind, uid, key);
+      if (!current.ok) { showToast(current.reason, 'warn'); ctx.closeOverlay(); return; }
+      if (signature(current) !== signature(p)) { p = current; draw(true); return; }
+      const r = kind === 'skill' ? await equipSkill(state, uid, key) : await equipItem(state, uid);
+      if (!r.ok) { showToast(r.reason, 'warn'); return; }
+      ctx.closeOverlay(); ctx.rerender();
+    } }],
+  });
+}
+
+function skillPicker(state, ctx, key) {
+  const candidates = state.skillBag.filter((s) => s.slot === slotTypeOf(key));
+  ctx.modal({ title: `选择功法 · ${SKILL_SLOT_LABEL[key]}`,
+    subtitle: '先比较整套收益，再选择替换',
+    body: h('div', null, ...candidates.map((sk) => {
+      const p = previewBuildSwap(state, 'skill', sk.uid, key);
+      return h('div.rowitem', null,
+        h('div.rowitem-main', null,
+          h('div.rowitem-name', { text: `${sk.name} · 第 ${sk.level} 重` }),
+          h('div.rowitem-meta', { text: `战力 ${fmtInt(p.powerBefore)} → ${fmtInt(p.powerAfter)}` })),
+        h('button.btn.btn-sm', { text: '比较此功法', onclick: () => {
+          ctx.closeOverlay(); confirmBuildSwap(state, ctx, 'skill', sk.uid, key);
+        } }));
+    })), actions: [{ label: '返回' }],
+  });
 }
 
 function skillPreviewModal(state, ctx, key) {
@@ -75,8 +127,8 @@ function skillPreviewModal(state, ctx, key) {
       {
         label: '参悟',
         primary: true,
-        onClick: () => {
-          const r = upgradeSkill(state, key);
+        onClick: async () => {
+          const r = await upgradeSkill(state, key);
           if (!r.ok) showToast(r.reason, 'warn');
           ctx.rerender();
         },
@@ -87,6 +139,18 @@ function skillPreviewModal(state, ctx, key) {
 
 /* ---------------- 存档 ---------------- */
 function saveSection(state, ctx) {
+  if (isAuthoritative(state)) return panel('服务器角色', gameBusy ? '正在确认' : gameError ? '连接待确认' : '已保存',
+    h('p.t-sm', {text:'所有页面共用同一份角色进度。操作成功即保存；生产与离线收益按服务器时间结算。'}),
+    h('p.t-xs.t-dim.mt-2', {text:'服务器角色不接受本机存档导入，也不能使用沙盒快进。'}),
+    marketLinked ? h('p.t-xs.mt-2', {text:'已参与玩家交易：清档不会再发放开局资金。有托管挂单时请先撤回；论道积分与每日次数绑定账号。'}) : null,
+    gameError ? h('p.t-xs.t-fall.mt-2',{role:'alert',text:gameError}) : null,
+    h('div.btn-row.mt-3',null,
+      h('button.btn.btn-sm',{text:'刷新角色',disabled:gameBusy,onclick:async ()=>{try {await refreshGame();}catch(e){showToast(e.message,'warn');}ctx.rerender();}}),
+      gamePending() ? h('button.btn.btn-sm',{text:'重试原操作',disabled:gameBusy,onclick:async ()=>{try {await refreshGame(true);}catch(e){showToast(e.message,'warn');}ctx.rerender();}}) : null,
+      h('button.btn.btn-sm',{text:'邮箱账号',onclick:()=>showAccount()}),
+      h('button.btn.btn-sm.btn-ghost',{text:'重置角色',disabled:gameBusy||!!gamePending(),onclick:()=>ctx.modal({
+        title:'重置服务器角色',body:h('p',{text:'清空游戏进度，重新从现代都市开始。邮箱账号、UID、天道碎片和已购权益保留。'}),
+        actions:[{label:'取消'},{label:'确认重置',primary:true,onClick:async()=>{const r=await resetGame();if(!r.ok)showToast(r.reason,'warn');ctx.rerender();}}]})})));
   const st = statusSnapshot();
   const ok = !st.lastError;
 
@@ -109,14 +173,17 @@ function saveSection(state, ctx) {
   const doImport = (file) => {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
         const next = importJSON(String(reader.result));
-        save(next);
+        stopAutoSave({ pauseUnload: true });
+        const result = await saveAsync(next);
+        if (!result.ok) throw new Error(result.message);
         showToast('存档已导入，正在重新载入…', 'good');
         setTimeout(() => location.reload(), 600);
       } catch (e) {
-        showToast('导入失败：文件不是有效的存档', 'warn');
+        startAutoSave(() => state, st.provider === 'cloud' ? 30000 : 8000);
+        showToast('导入失败：' + (e.message || '文件不是有效的存档'), 'warn');
       }
     };
     reader.readAsText(file);
@@ -132,7 +199,11 @@ function saveSection(state, ctx) {
       ),
       actions: [
         { label: '取消' },
-        { label: '确认重置', primary: true, onClick: () => { reset(); location.reload(); } },
+        { label: '确认重置', primary: true, onClick: async () => {
+          const result = await resetAsync();
+          if (result.ok) location.reload();
+          else showToast(result.message || '重置失败，原进度仍保留', 'warn');
+        } },
       ],
     });
   };
@@ -151,6 +222,12 @@ function saveSection(state, ctx) {
     h('p.t-xs.t-dim.mt-2', { text: st.providers.find((p) => p.id === st.provider)?.hint || '' }),
     !ok ? h('p.t-xs.t-rise.mt-1', { text: '⚠ 存档没有写进去。若是隐私模式请换普通窗口，或先导出备份。' }) : null,
     h('div.btn-row.mt-3', null,
+      h('button.btn.btn-sm', { text: '云端账号', onclick: () => showAccount() }),
+      h('button.btn.btn-sm', { text: '立即保存', onclick: async () => {
+        const result = await saveAsync(state);
+        showToast(result.ok ? '存档已保存' : result.message, result.ok ? 'good' : 'warn');
+        ctx.rerender();
+      } }),
       h('button.btn.btn-sm', { text: '导出存档', onclick: doExport }),
       h('label.btn.btn-sm', { style: 'cursor:pointer' },
         '导入存档',
@@ -222,6 +299,8 @@ export function renderCharacter(state, ctx) {
               h('span.tag', { class: tierOf(eq).cls, text: tierOf(eq).name }),
             ),
             h('div.rowitem-meta', null, ...statLines(effectiveStats(eq, a.enhanceBonus))),
+            affixDescription(eq)?h('p.t-xs.t-jade',{text:affixDescription(eq)}):null,
+            eq.set==='blackwater'?h('p.t-xs.t-dim',{text:'黑水套装：两件提高毒丹流持续毒伤25%。'}):null,
           )
           : h('div.t-sm.t-dimmer', { text: '空' }),
       ),
@@ -230,9 +309,9 @@ export function renderCharacter(state, ctx) {
           text: pv && pv.maxed ? '已满' : `强化 ${pv ? fmtInt(pv.cost) : ''}`,
           disabled: !pv || pv.maxed || state.currency.stone < pv.cost,
           title: pv ? `成功率 ${fmtPct(pv.rate, 0)}` : '',
-          onclick: () => { const r = enhance(state, slot.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+          onclick: async () => { const r = await enhance(state, slot.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
         }) : null,
-        eq ? h('button.btn.btn-sm.btn-ghost', { text: '卸下', onclick: () => { unequip(state, slot.id); ctx.rerender(); } }) : null,
+        eq ? h('button.btn.btn-sm.btn-ghost', { text: '卸下', onclick: async () => { await unequip(state, slot.id); ctx.rerender(); } }) : null,
       ),
     );
   });
@@ -246,11 +325,11 @@ export function renderCharacter(state, ctx) {
         h('div.rowitem-main', null,
           h('div.rowitem-title', null, h('span.rowitem-name', { text: t.name })),
           h('div.rowitem-meta', {
-            text: { light_boost: '阴系副本伤害 ×2', poison_immunity: '毒系副本自动解毒', flat_atk: `攻击 +${t.stats.atk || 0}` }[t.tech] || '',
+            text: { light_boost: '阴系副本伤害 ×2', poison_immunity: '毒系伤害 ×1.35，额外减伤 20%', heat_shield: '炼狱系额外减伤 25%', flat_atk: `攻击 +${t.stats.atk || 0}` }[t.tech] || '',
           }),
         ),
         h('div.rowitem-act', null,
-          h('button.btn.btn-sm.btn-ghost', { text: '收起', onclick: () => { unequipTech(state, t.itemId); ctx.rerender(); } }),
+          h('button.btn.btn-sm.btn-ghost', { text: '收起', onclick: async () => { await unequipTech(state, t.itemId); ctx.rerender(); } }),
         ),
       ))
       : h('div.empty', { text: '还没有随身科技装备。现代货里的抗生素、强光手电、合金刀可以直接带在身上。' }),
@@ -272,7 +351,7 @@ export function renderCharacter(state, ctx) {
                   h('span.rowitem-name', { class: TIER_MAP.rare.cls, text: sk.name }),
                   h('span.tag', { text: `第 ${sk.level} 重` }),
                 ),
-                h('div.rowitem-meta', null, ...statLines(sk.stats)),
+                h('div.rowitem-meta', null, ...statLines(Object.fromEntries(Object.entries(sk.stats).map(([k, v]) => [k, v * (1 + (sk.level - 1) * 0.18)])))),
               )
               : h('div.t-sm.t-dimmer', { text: '空' }),
           ),
@@ -280,23 +359,18 @@ export function renderCharacter(state, ctx) {
             sk ? h('button.btn.btn-sm', {
               text: sk.level >= sk.maxLevel ? '圆满' : (fx.skillPreview ? '预览参悟' : '参悟'),
               disabled: sk.level >= sk.maxLevel,
-              onclick: () => {
+              onclick: async () => {
                 if (fx.skillPreview) { skillPreviewModal(state, ctx, key); return; }
-                const r = upgradeSkill(state, key);
+                const r = await upgradeSkill(state, key);
                 if (!r.ok) showToast(r.reason, 'warn');
                 ctx.rerender();
               },
             }) : null,
-            sk ? h('button.btn.btn-sm.btn-ghost', { text: '取下', onclick: () => { unequipSkill(state, key); ctx.rerender(); } }) : null,
+            sk ? h('button.btn.btn-sm.btn-ghost', { text: '取下', onclick: async () => { await unequipSkill(state, key); ctx.rerender(); } }) : null,
             candidates.length
               ? h('button.btn.btn-sm.btn-solid', {
                 text: `换（${candidates.length}）`,
-                onclick: () => {
-                  const best = candidates.slice().sort((x, y) => 0)[0];
-                  const r = equipSkill(state, best.uid, key);
-                  if (!r.ok) showToast(r.reason, 'warn');
-                  ctx.rerender();
-                },
+                onclick: () => skillPicker(state, ctx, key),
               })
               : null,
           ),
@@ -305,11 +379,11 @@ export function renderCharacter(state, ctx) {
       state.skillBag.length
         ? h('div', { style: 'padding:12px 16px;border-top:1px solid var(--line)' },
           h('div.t-xs.t-dim.mb-2', { text: `功法库（${state.skillBag.length}）` }),
-          ...state.skillBag.slice(0, 12).map((s) => h('div.flex-between', { style: 'padding:3px 0' },
+          ...state.skillBag.map((s) => h('div.flex-between', { style: 'padding:3px 0' },
             h('span.t-sm', { text: s.name }),
             h('span', null,
               h('span.t-xs.t-dimmer', { text: slotTypeOf('move1') === s.slot ? '招式' : s.slot === 'heart' ? '心法' : '特殊' }),
-              h('button.btn.btn-sm.btn-ghost', { style: 'margin-left:8px', text: '散功', onclick: () => { scrapSkill(state, s.uid); ctx.rerender(); } }),
+              h('button.btn.btn-sm.btn-ghost', { style: 'margin-left:8px', text: '散功', onclick: async () => { await scrapSkill(state, s.uid); ctx.rerender(); } }),
             ),
           )),
         )
@@ -323,7 +397,6 @@ export function renderCharacter(state, ctx) {
       ? state.bag
         .slice()
         .sort((x, y) => equipmentScore(y) - equipmentScore(x))
-        .slice(0, 14)
         .map((eq) => h('div.rowitem', null,
           h('div.rowitem-main', null,
             h('div.rowitem-title', null,
@@ -333,10 +406,12 @@ export function renderCharacter(state, ctx) {
               h('span.tag', { text: SLOT_MAP[eq.slot]?.name || eq.slot }),
             ),
             h('div.rowitem-meta', null, ...statLines(effectiveStats(eq, a.enhanceBonus))),
+            affixDescription(eq)?h('p.t-xs.t-jade',{text:affixDescription(eq)}):null,
+            eq.set==='blackwater'?h('p.t-xs.t-dim',{text:'黑水套装：两件提高毒丹流持续毒伤25%。'}):null,
           ),
           h('div.rowitem-act', null,
-            h('button.btn.btn-sm.btn-solid', { text: '装备', onclick: () => { equipItem(state, eq.uid); ctx.rerender(); } }),
-            h('button.btn.btn-sm.btn-ghost', { text: '分解', onclick: () => { scrapEquipment(state, eq.uid); ctx.rerender(); } }),
+            h('button.btn.btn-sm.btn-solid', { text: '比较装备', onclick: () => confirmBuildSwap(state, ctx, 'equipment', eq.uid) }),
+            h('button.btn.btn-sm.btn-ghost', { text: '分解', onclick: async () => { await scrapEquipment(state, eq.uid); ctx.rerender(); } }),
           ),
         ))
       : h('div.empty', { text: '装备库是空的。去副本里打点东西回来。' }),
@@ -352,14 +427,14 @@ export function renderCharacter(state, ctx) {
         h('div.rowitem-title', null,
           h('span.rowitem-name', { text: it.name }),
           isConsumable ? h('span.tag', { class: 'q-rare', text: '丹药' }) : null,
-          !isConsumable && e.quality !== 'common' ? h('span.tag', { class: q.cls, text: q.name }) : null,
+          e.quality !== 'common' ? h('span.tag', { class: q.cls, text: q.name }) : null,
           h('span.tag', { text: `×${e.qty}` }),
         ),
-        h('div.rowitem-meta', { text: `${it.weight} kg/件　共 ${(it.weight * e.qty).toFixed(2)} kg` }),
+        h('div.rowitem-meta', { text: isConsumable ? pillDescription(e.itemId, e.quality) : `${it.weight} kg/件　共 ${(it.weight * e.qty).toFixed(2)} kg` }),
       ),
       h('div.rowitem-act', null,
-        isConsumable ? h('button.btn.btn-sm.btn-solid', { text: '使用', onclick: () => { const r = useConsumable(state, e.itemId); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
-        it.equip ? h('button.btn.btn-sm', { text: '随身带', onclick: () => { const r = equipTech(state, e.itemId); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
+        isConsumable ? h('button.btn.btn-sm.btn-solid', { text: '使用', onclick: async () => { const r = await useConsumable(state, e.itemId, e.uid); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
+        it.equip ? h('button.btn.btn-sm', { text: '随身带', onclick: async () => { const r = await equipTech(state, e.itemId); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }) : null,
       ),
     );
   }).filter(Boolean);
@@ -367,9 +442,25 @@ export function renderCharacter(state, ctx) {
   const bagGoods = panelFlush('货物背包', '载重只算货物，不算装备',
     goodsRows.length ? goodsRows : h('div.empty', { text: '背包是空的。' }),
   );
+  const collections = collectionSections(state);
+  const collection = panel('收藏图鉴', '只记录发现，不提供战斗属性',
+    h('p.t-xs.t-dim.mb-2', { text: '首次收获作物、养殖或捕获灵兽、获得对应部位品阶装备时解锁。图鉴随轮回保留；集齐分类获得免费展示称号，可在称号收藏中佩戴。' }),
+    collections.map(section => h('details.mt-2', null,
+      h('summary.t-sm', { text: `${section.label} · ${section.rows.filter(x => x.unlocked).length}/${section.rows.length}` }),
+      h('p.t-xs.t-jade.mt-2', { text: `收藏奖励：${section.reward} · 纯展示` }),
+      section.rows.map(row => h('div.rowitem.mt-2', null,
+        h('div.rowitem-main', null, h('strong.t-xs', { text: `${row.unlocked ? '✓' : '○'} ${row.name}` }),
+          h('p.t-xs.t-dim', { text: row.unlocked ? row.note : '尚未发现' }), h('p.t-xs.t-dimmer', { text: row.source })),
+        h('button.btn.btn-sm', { text: state.side === 'modern' ? '前往界门' : '前往发现', onclick: () => ctx.navigate(state.side === 'modern' ? 'gate' : row.view) }))))));
 
   return h('div.flex-col.gap-4', null,
+    panel('账号身份', '轮回 / 重置后保留', accountIdentity()),
+    panel('配装准备', '战力用于参考，副本机制同样重要',
+      h('p.t-sm', { text: state.player.stage >= 4 ? `功法已装 ${SKILL_SLOT_KEYS.filter(k => state.skills[k]).length} / 4 槽 · 上阵灵兽 ${state.beasts.deployed.length} / 2` : '炼气五层解锁四功法槽，当前可先准备装备与随身科技。' }),
+      state.side === 'cultivation'
+        ? h('div.btn-row.mt-2', null, h('button.btn.btn-sm', { text: '查看秘境机制', onclick: () => ctx.navigate('dungeon') }), h('button.btn.btn-sm', { text: '调整灵兽', onclick: () => ctx.navigate('farm') }))
+        : h('button.btn.btn-sm.mt-2', { text: '前往界门，准备秘境与灵兽', onclick: () => ctx.navigate('gate') })),
     h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px' }, primary, secondary),
-    equipPanel, techPanel, skillPanel, bagEquip, bagGoods, saveSection(state, ctx),
+    equipPanel, techPanel, skillPanel, bagEquip, bagGoods, collection, saveSection(state, ctx),
   );
 }

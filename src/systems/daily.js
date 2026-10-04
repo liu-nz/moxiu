@@ -5,6 +5,47 @@
  */
 
 import { riftDayIndex } from '../core/clock.js';
+import { logGood } from './log.js';
+import { emit, EV } from '../core/bus.js';
+import { RANCH_MAP } from '../data/beasts.js';
+import { tickRanch } from './ranch.js';
+
+export const SIGN_IN_REWARD = 20;
+export function bindActivity(state, activity) {
+  if (!activity) return;
+  state.daily ||= {};
+  Object.assign(state.daily, activity);
+}
+export function signIn(state) {
+  state.daily ||= {};
+  const day = riftDayIndex(state.world.clockMs), d = state.daily;
+  if (d.signInDay === day) return { ok: false, reason: '今天已经签到，明日 05:00 后可再次领取。' };
+  d.signInStreak = d.signInDay === day - 1 ? (d.signInStreak || 0) + 1 : 1;
+  d.signInDay = day; d.signInTotal = (d.signInTotal || 0) + 1;
+  state.currency.stone += SIGN_IN_REWARD;
+  earn(state, 'stone', SIGN_IN_REWARD);
+  logGood(state, `今日签到：+${SIGN_IN_REWARD} 灵石，连续 ${d.signInStreak} 天。`);
+  emit(EV.STATE);
+  return { ok: true, reward: SIGN_IN_REWARD, day };
+}
+export function claimHelp(state) {
+  const d = state.daily || {}, day = riftDayIndex(state.world.clockMs);
+  if (!d.help || d.helpClaimedDay === day) return { ok: false, reason: '没有可领取的照料，或今天已经领取。' };
+  const plot = state.farm.plots.find(x => x && x.readyAt > state.world.clockMs);
+  const slot = state.ranch.slots.find(x => x && RANCH_MAP[x.beastId]);
+  let kind;
+  if (plot) { plot.readyAt = Math.max(state.world.clockMs, plot.readyAt - 5 * 60000); kind = '灵田'; }
+  else if (slot) {
+    const cycle = RANCH_MAP[slot.beastId].cycleMs;
+    slot.acc = Math.min(cycle, (slot.acc || 0) + 5 * 60000);
+    tickRanch(state, 0); kind = '牧场';
+  } else return { ok: false, reason: '请先种植作物或养殖灵兽，再领取照料。' };
+  const helpId = d.help.id;
+  d.helpClaimedDay = day; d.help = null;
+  logGood(state, `${kind}收到同行照料，本次等待缩短至多 5 分钟。`);
+  emit(EV.STATE);
+  return { ok: true, helpId, day, kind };
+}
 
 export function ensureDailyBase(state) {
   if (!state.daily) state.daily = {};

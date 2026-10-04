@@ -3,19 +3,23 @@
  * 公寓收租、店铺自动售货、仓库扩货架（提升跨界载重）。
  */
 
+import { capacityBonus } from '../core/shards.js';
 import { ESTATES, ESTATE_MAP, SHOP, WAREHOUSE } from '../data/estate.js';
 import { ITEM_MAP, currencyOf, CURRENCY_NAME } from '../data/items.js';
 import { BUSINESS } from '../data/jobs.js';
 import { projectEffects } from '../data/projects.js';
 import { sideFactor, SIDE } from '../core/state.js';
-import { sellPrice } from './market.js';
-import { inventoryRows, removeEntry } from './inventory.js';
+import { quoteSell, quotePortfolio, recordTrade } from './market.js';
+import { inventoryRows, countOf, removeEntry, validQuantity } from './inventory.js';
 import { computeAttrs } from './character.js';
 import { dutyMultiplier } from './companion.js';
 import { countSold, earn } from './daily.js';
 import { logGood, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt } from '../core/util.js';
+import { investmentBudget } from './finance.js';
+import { INDUSTRIES } from '../data/industries.js';
+import { alchemyPlan } from './alchemy.js';
 
 export function ownedCount(state, id) {
   return state.estate?.owned?.[id] || 0;
@@ -33,9 +37,10 @@ export function buyEstate(state, id) {
   const e = ESTATE_MAP[id];
   if (!e) return { ok: false, reason: '没有这处地产。' };
   const owned = ownedCount(state, id);
-  if (owned >= e.maxOwn) return { ok: false, reason: '这类地产已达持有上限。' };
+  if (owned >= (e.maxOwn + (e.id === 'suburb' ? capacityBonus(state, 'suburb_extra') : 0))) return { ok: false, reason: '这类地产已达持有上限。' };
   const price = Math.round(e.price * Math.pow(1.12, owned));
-  if (state.currency.cny < price) return { ok: false, reason: `需要 ¥${fmtInt(price)}。` };
+  const budget = investmentBudget(state, price);
+  if (!budget.ok) return budget;
   state.currency.cny -= price;
   state.estate.owned[id] = owned + 1;
   logGood(state, `购入「${e.name}」，租金 +¥${e.rent}/时。`);
@@ -50,7 +55,8 @@ export function buyShop(state) {
   const owned = state.estate.shops || 0;
   if (owned >= SHOP.maxOwn) return { ok: false, reason: '店铺数量已达上限。' };
   const price = SHOP.priceOf(owned);
-  if (state.currency.cny < price) return { ok: false, reason: `需要 ¥${fmtInt(price)}。` };
+  const budget = investmentBudget(state, price);
+  if (!budget.ok) return budget;
   state.currency.cny -= price;
   state.estate.shops = owned + 1;
   logGood(state, `新开一间店铺，共 ${state.estate.shops} 间。`);
@@ -62,7 +68,8 @@ export function upgradeWarehouse(state) {
   const lv = state.estate.warehouseLevel || 0;
   if (lv >= WAREHOUSE.maxLevel) return { ok: false, reason: '仓库已扩到极限。' };
   const cost = WAREHOUSE.costOf(lv);
-  if (state.currency.cny < cost) return { ok: false, reason: `需要 ¥${fmtInt(cost)}。` };
+  const budget = investmentBudget(state, cost);
+  if (!budget.ok) return budget;
   state.currency.cny -= cost;
   state.estate.warehouseLevel = lv + 1;
   logGood(state, `仓库扩建至 Lv.${state.estate.warehouseLevel}，跨界载重 +1 kg。`);
@@ -88,10 +95,11 @@ export function tickEstate(state, dtMs) {
   const rent = rentPerHour(state) * hours;
   if (rent > 0) {
     state.currency.cny += rent;
+    state.stats.passiveCny = (state.stats.passiveCny || 0) + rent;
     earn(state, 'cny', rent);
     state.stats.maxCny = Math.max(state.stats.maxCny || 0, state.currency.cny);
   }
-  if (state.estate.autoSell && state.estate.shops > 0) {
+  if (state.side === SIDE.MODERN && state.estate.autoSell && state.estate.shops > 0) {
     state.estate.sellAcc = (state.estate.sellAcc || 0) + hours;
     const projectBoost = 1 + (projectEffects(state).shopThroughput || 0);
     const capacity = SHOP.throughputPerHour * state.estate.shops
@@ -106,9 +114,10 @@ export function tickEstate(state, dtMs) {
 
 /** 店铺自动售货：把背包里的外来货按当日价卖出（渠道抽成） */
 export function autoSell(state, limit) {
-  const world = state.side;
+  if (state.side !== SIDE.MODERN || !validQuantity(limit)) return { ok: false, sold: 0 };
+  const world = SIDE.MODERN;
   const attrs = computeAttrs(state);
-  const rows = inventoryRows(state).filter((r) => ITEM_MAP[r.itemId] && ITEM_MAP[r.itemId].origin !== world);
+  const rows = shopStock(state).rows;
   if (!rows.length) return { ok: false, sold: 0 };
   const cur = currencyOf(world);
   let sold = 0;
@@ -116,16 +125,20 @@ export function autoSell(state, limit) {
   for (const r of rows) {
     if (sold >= limit) break;
     const n = Math.min(r.qty, limit - sold);
-    const unit = sellPrice(state, world, r.itemId, r.quality, attrs) * (1 - SHOP.channelFee);
+    const amount = quoteSell(state, world, r.itemId, n, r.quality, attrs).total * (1 - SHOP.channelFee);
     removeEntry(state, r.uid, n);
-    state.currency[cur] += unit * n;
+    state.currency[cur] += amount;
     state.market.sold[world][r.itemId] = (state.market.sold[world][r.itemId] || 0) + n;
     sold += n;
-    revenue += unit * n;
+    revenue += amount;
+    recordTrade(state, { type: 'sell', itemId: r.itemId, qty: n, currency: cur, amount, channel: '店铺' });
   }
   if (sold > 0) {
+    state.stats.shopSold = (state.stats.shopSold || 0) + sold;
+    state.stats.shopCny = (state.stats.shopCny || 0) + revenue;
     state.stats.tradeCount += 1;
     state.stats.profit += revenue;
+    state.stats.maxCny = Math.max(state.stats.maxCny || 0, state.currency.cny);
     countSold(state, sold);
     earn(state, cur, revenue);
     emit(EV.STATE);
@@ -133,11 +146,21 @@ export function autoSell(state, limit) {
   return { ok: sold > 0, sold, revenue };
 }
 
+export function shopCapacity(state) {
+  return SHOP.throughputPerHour * (1 + dutyMultiplier(state, 'tiexinlan') * 0.5)
+    * (1 + (projectEffects(state).shopThroughput || 0));
+}
+
 export function estateSummary(state) {
   const attrs = computeAttrs(state);
+  const rentMul = (1 + (attrs.shopTraffic || 0)) * (1 + (projectEffects(state).rentMul || 0)) * sideFactor(state, SIDE.MODERN);
   return {
+    shopCapacity: shopCapacity(state),
     list: ESTATES.map((e) => ({
       ...e,
+      maxOwn: e.maxOwn + (e.id === 'suburb' ? capacityBonus(state, 'suburb_extra') : 0),
+      actualRent: e.rent * rentMul,
+      paybackHours: Math.round(e.price * Math.pow(1.12, ownedCount(state, e.id))) / (e.rent * rentMul),
       owned: ownedCount(state, e.id),
       nextPrice: Math.round(e.price * Math.pow(1.12, ownedCount(state, e.id))),
     })),
@@ -155,3 +178,40 @@ export function estateSummary(state) {
 }
 
 export { ESTATES, ESTATE_MAP, SHOP, WAREHOUSE, BUSINESS };
+
+/** 只保留一炉目标丹药所需的贸易药草；指定库存保留量不区分品质。 */
+export function shopReservations(state) {
+  const keep = { ...(state.estate.keep || {}) };
+  if ((state.estate.saleMode || 'surplus') === 'surplus') {
+    const plan = alchemyPlan(state);
+    for (const m of plan.mats || []) keep[m.id] = Math.max(keep[m.id] || 0, m.need);
+  }
+  for (const p of INDUSTRIES) if (state.modern.industries?.[p.id]?.on) for (const [id, n] of Object.entries(p.mats)) keep[id] = (keep[id] || 0) + n;
+  return keep;
+}
+export function setShopPolicy(state, { mode, itemId, keepQty } = {}) {
+  if (mode !== undefined && !['all', 'surplus'].includes(mode)) return { ok: false, reason: '请选择全部货物或保留炼丹备料。' };
+  if (itemId !== undefined && (!ITEM_MAP[itemId] || ITEM_MAP[itemId].origin !== 'cultivation' || !Number.isSafeInteger(keepQty) || keepQty < 0)) return { ok: false, reason: '保留数量须为非负整数，且货物来自修仙界。' };
+  if (mode !== undefined) state.estate.saleMode = mode;
+  if (itemId !== undefined) (state.estate.keep ??= {})[itemId] = keepQty;
+  emit(EV.STATE); return { ok: true };
+}
+export function shopStock(state) {
+  const keep = shopReservations(state), used = {}, rows = [];
+  for (const r of inventoryRows(state)) {
+    if (!ITEM_MAP[r.itemId] || r.item.origin !== 'cultivation') continue;
+    const available = Math.max(0, countOf(state, r.itemId) - (keep[r.itemId] || 0) - (used[r.itemId] || 0));
+    const qty = Math.min(r.qty, available);
+    if (qty > 0) { rows.push({ ...r, qty }); used[r.itemId] = (used[r.itemId] || 0) + qty; }
+  }
+  const quote = quotePortfolio(state, SIDE.MODERN, rows, computeAttrs(state));
+  const capacity = shopCapacity(state) * (state.estate.shops || 0);
+  return { rows, keep, qty: quote.qty, gross: quote.total, net: quote.total * (1 - SHOP.channelFee), capacity,
+    hours: capacity > 0 ? quote.qty / capacity : Infinity,
+    status: !state.estate.shops ? '尚无店铺' : !state.estate.autoSell ? '已暂停' : state.side !== SIDE.MODERN ? '异界暂停，返回现代后继续' : !quote.qty ? '等待可售库存' : '正在售货' };
+}
+export function nextShopEvent(state) {
+  if (state.side !== SIDE.MODERN || !state.estate.autoSell || !state.estate.shops || !shopStock(state).qty) return Infinity;
+  const capacity = shopCapacity(state) * state.estate.shops;
+  return Math.max(1, (1 / capacity - (state.estate.sellAcc || 0)) * 3600000);
+}

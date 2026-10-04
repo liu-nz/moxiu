@@ -6,10 +6,8 @@ import { h, panel, panelFlush, bar, showToast } from '../dom.js';
 import { SECTS, SECT_RANKS, SECT_TOURNAMENT, tributeValue } from '../../data/sects.js';
 import { stageInfo } from '../../data/realms.js';
 import { MATERIALS, MATERIAL_MAP } from '../../data/items.js';
-import {
-  sectSummary, joinSect, leaveSect, promote, claimQuest, claimAllQuests,
-  buySecret, tribute, challengeTournament,
-} from '../../systems/sect.js';
+import { sectSummary } from '../../systems/sect.js';
+import { sect_joinSect as joinSect, sect_leaveSect as leaveSect, sect_promote as promote, sect_claimQuest as claimQuest, sect_claimAllQuests as claimAllQuests, sect_buySecret as buySecret, sect_tribute as tribute, sect_challengeTournament as challengeTournament } from '../commands.js';
 import { countOf } from '../../systems/inventory.js';
 import { fmtInt, fmtDuration, fmtPct } from '../../core/util.js';
 
@@ -29,7 +27,7 @@ function joinPanel(state, ctx) {
       h('div.rowitem-act', null,
         h('button.btn.btn-sm.btn-solid', {
           text: '拜师',
-          onclick: () => { const r = joinSect(state, s.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+          onclick: async () => { const r = await joinSect(state, s.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
         }),
       ),
     ))),
@@ -53,7 +51,7 @@ export function renderSect(state, ctx) {
         h('div.t-sm.t-jade', { text: sect.perk }),
         h('div.t-xs.t-dim', { text: sect.desc }),
       ),
-      h('button.btn.btn-sm.btn-ghost', { text: '离开宗门', onclick: () => { leaveSect(state); ctx.rerender(); } }),
+      h('button.btn.btn-sm.btn-ghost', { text: '离开宗门', onclick: async () => { await leaveSect(state); ctx.rerender(); } }),
     ),
     h('dl', { style: 'margin:12px 0 0' },
       h('dl.kv', null, h('dt', { text: '宗门贡献' }), h('dd.t-num', { text: fmtInt(s.contribution) })),
@@ -77,7 +75,7 @@ export function renderSect(state, ctx) {
           class: rank.canPromote ? 'btn-solid' : '',
           text: rank.canPromote ? '晋阶' : '条件未满',
           disabled: !rank.canPromote,
-          onclick: () => { const r = promote(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+          onclick: async () => { const r = await promote(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
         })
         : null,
     ),
@@ -95,7 +93,7 @@ export function renderSect(state, ctx) {
     h('div.btn-row.mb-2', null,
       h('button.btn.btn-sm', {
         text: '一键领取',
-        onclick: () => { const r = claimAllQuests(state); if (!r.ok) showToast('暂无可领任务', 'warn'); ctx.rerender(); },
+        onclick: async () => { const r = await claimAllQuests(state); if (!r.ok) showToast('暂无可领任务', 'warn'); ctx.rerender(); },
       }),
     ),
     ...s.quests.map((q) => {
@@ -113,7 +111,7 @@ export function renderSect(state, ctx) {
               class: q.claimable ? 'btn-solid' : '',
               text: `+${q.quest.contribution} 贡献`,
               disabled: !q.claimable,
-              onclick: () => { const res = claimQuest(state, q.quest.id); if (!res.ok) showToast(res.reason, 'warn'); ctx.rerender(); },
+              onclick: async () => { const res = await claimQuest(state, q.quest.id); if (!res.ok) showToast(res.reason, 'warn'); ctx.rerender(); },
             }),
         ),
         h('div.mt-2', null, bar(r2)),
@@ -138,8 +136,8 @@ export function renderSect(state, ctx) {
           h('div.t-xs.t-dim', { text: `1 份 = ${tributeValue(m)} 贡献` }),
         ),
         h('div.rowitem-act', null,
-          h('button.btn.btn-sm', { text: '缴 1', onclick: () => { tribute(state, m.id, 1); ctx.rerender(); } }),
-          h('button.btn.btn-sm.btn-solid', { text: '全缴', onclick: () => { tribute(state, m.id, countOf(state, m.id)); ctx.rerender(); } }),
+          h('button.btn.btn-sm', { text: '缴 1', onclick: async () => { await tribute(state, m.id, 1); ctx.rerender(); } }),
+          h('button.btn.btn-sm.btn-solid', { text: '全缴', onclick: async () => { await tribute(state, m.id, countOf(state, m.id)); ctx.rerender(); } }),
         ),
       ))
       : h('div.empty', { text: '背包里没有可上缴的材料。' }),
@@ -163,7 +161,7 @@ export function renderSect(state, ctx) {
             class: x.canBuy ? 'btn-solid' : '',
             text: '参悟',
             disabled: !x.canBuy,
-            onclick: () => { const r = buySecret(state, x.secret.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+            onclick: async () => { const r = await buySecret(state, x.secret.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
           }),
       ),
     )),
@@ -184,8 +182,8 @@ export function renderSect(state, ctx) {
         ? h('button.btn.btn-solid', {
           text: '参加大比',
           disabled: state.player.stamina < SECT_TOURNAMENT.stamina,
-          onclick: () => {
-            const r = challengeTournament(state);
+          onclick: async () => {
+            const r = await challengeTournament(state);
             if (!r.ok) { showToast(r.reason, 'warn'); return; }
             ctx.rerender();
             ctx.modal({

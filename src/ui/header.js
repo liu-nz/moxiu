@@ -3,8 +3,13 @@
  */
 
 import { h } from './dom.js';
+import { showAccount } from './account.js';
+import { cloudSession } from '../core/cloud.js';
+import { isAuthoritative } from '../core/authority.js';
+import { gameBusy, gameError, gamePending, refreshGame } from '../core/game.js';
 import { SIDE, SIDE_NAME, SIDE_SUB } from '../core/state.js';
-import { canCross, cross, perDirection, msToNextRift, carryCapacity, gameDay } from '../systems/rift.js';
+import { canCross, perDirection, msToNextRift, carryCapacity, gameDay } from '../systems/rift.js';
+import { rift_cross as cross } from './commands.js';
 import { fmtInt, fmtDuration, fmtKg } from '../core/util.js';
 import { setSpeed, setMode, isStandard, SPEEDS } from '../core/loop.js';
 import { showToast } from './dom.js';
@@ -33,9 +38,7 @@ export function renderHeader(state, ctx) {
     class: state.side === side ? 'on' : '',
     onclick: () => {
       if (state.side === side) return;
-      const res = cross(state, side);
-      if (!res.ok) showToast(res.reason, 'warn');
-      else ctx.rerender();
+      ctx.navigate('gate');
     },
   },
     h('span', { text: SIDE_NAME[side] }),
@@ -43,6 +46,7 @@ export function renderHeader(state, ctx) {
   );
 
   const standard = isStandard(state);
+  const managed = isAuthoritative(state);
 
   const speedBtn = (s) => h('button.btn', {
     class: state.world.speed === s ? 'btn-solid' : '',
@@ -70,6 +74,7 @@ export function renderHeader(state, ctx) {
     h('button.btn', {
       class: standard ? '' : 'btn-solid',
       text: '沙盒',
+      disabled: managed,
       title: '可按倍率快进，用于快速体验完整流程；界潮不再与全服同步',
       onclick: () => {
         const r = setMode(state, 'sandbox');
@@ -84,10 +89,10 @@ export function renderHeader(state, ctx) {
     h('div.brand', null,
       h('div', null,
         h('div.brand-mark', { text: '墨修' }),
-        h('div.brand-sub', { text: '两界穿越 · 修仙经营' }),
+        h('div.brand-sub', { text: managed ? (gameBusy ? '正在确认操作…' : gameError ? '连接待确认' : '服务器角色 · 已连接') : '访客试玩 · 本机进度' }),
       ),
     ),
-    h('div.worldtabs', null, tab(SIDE.CULTIVATION), tab(SIDE.MODERN)),
+    h('div.worldtabs', null, tab(SIDE.CULTIVATION), tab(SIDE.MODERN), h('button.btn.header-gate', {text:'◈ 界门',onclick:()=>ctx.navigate('gate')})),
     h('div.topres', null,
       h('div.res', null,
         h('span.res-k', { text: '灵石' }),
@@ -112,7 +117,8 @@ export function renderHeader(state, ctx) {
         ),
         h('span.res-sub', { live: 'riftCountdown' }),
       ),
-      timeCtl,
+      managed && (gameError || gamePending()) ? h('button.btn.btn-sm', { text:'重试确认', disabled:gameBusy, onclick:async ()=>{try {await refreshGame(true);} catch(e){showToast(e.message,'warn');} ctx.rerender();} }) : null,
+      h('details.header-settings', null,h('summary', {text:'设置'}),h('div.settings-popover',null,timeCtl,h('button.btn.btn-block.mt-2',{text:'人物与存档',onclick:()=>ctx.navigate('character')}),h('button.btn.btn-block.mt-2',{text:cloudSession ? '云端账号 · 已登录' : '邮箱登录 / 云存档',onclick:()=>showAccount()}))),
     ),
   );
 

@@ -3,7 +3,8 @@
  */
 
 import { h, panel, panelFlush, bar, showToast } from '../dom.js';
-import { lifestyleSummary, upgrade, upgradeAll } from '../../systems/lifestyle.js';
+import { lifestyleSummary } from '../../systems/lifestyle.js';
+import { lifestyle_upgrade as upgrade, lifestyle_upgradeAll as upgradeAll } from '../commands.js';
 import { fmtInt, fmtPct } from '../../core/util.js';
 
 export function renderLifestyle(state, ctx) {
@@ -52,12 +53,12 @@ export function renderLifestyle(state, ctx) {
                 h('button.btn.btn-sm.btn-solid', {
                   text: '升级',
                   disabled: state.currency.cny < x.cost,
-                  onclick: () => { const r = upgrade(state, x.item.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+                  onclick: async () => { const r = await upgrade(state, x.item.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
                 }),
                 h('button.btn.btn-sm', {
                   text: '连升',
                   disabled: state.currency.cny < x.cost,
-                  onclick: () => { upgradeAll(state, x.item.id); ctx.rerender(); },
+                  onclick: async () => { await upgradeAll(state, x.item.id); ctx.rerender(); },
                 }),
               ),
             ),

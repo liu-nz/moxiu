@@ -4,7 +4,8 @@
 
 import { h, panel, panelFlush, bar, showToast } from '../dom.js';
 import { COMPANIONS, AFFECTION_STAGES } from '../../data/companions.js';
-import { companionView, gift, companionTotals, dutyMultiplier } from '../../systems/companion.js';
+import { companionView, companionTotals, dutyMultiplier } from '../../systems/companion.js';
+import { companion_gift as gift } from '../commands.js';
 import { fmtInt, fmtPct } from '../../core/util.js';
 
 export function renderCompanion(state, ctx) {
@@ -68,7 +69,7 @@ export function renderCompanion(state, ctx) {
             text: `送礼（${v.giftName} ×1 + ${fmtInt(v.stoneCost)} 灵石）`,
             disabled: v.giftHave < 1 || state.currency.stone < v.stoneCost,
             title: v.giftHave < 1 ? `需要「${v.giftName}」，背包里没有` : '',
-            onclick: () => { const r = gift(state, c.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+            onclick: async () => { const r = await gift(state, c.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
           }),
           h('span.t-xs.t-dimmer', { text: `信物持有 ${v.giftHave}　·　已送礼 ${v.gifts} 次` }),
         ),

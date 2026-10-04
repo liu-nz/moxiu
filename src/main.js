@@ -1,20 +1,21 @@
-/**
- * main.js —— 启动入口
- *
- * 启动流程是**异步**的：先尝试云端存档，取不到再回落本地。
- * 同步 boot 撑不住远程读取，所以这一步必须先把结构改对，
- * 云服务接入时才不需要再动主流程。
- */
+import {worldState} from './data/worldStates.js';
+import {activeBuild} from './data/builds.js';
+/** 登录账号使用服务器角色；访客保留本机试玩进度。 */
 
 import { createInitialState } from './core/state.js';
 import * as Save from './core/save.js';
-import { startLoop, setMode } from './core/loop.js';
+import { prepareCloud, passwordRecovery } from './core/cloud.js';
+import { loadGame, startGameSync, resetGame } from './core/game.js';
+import { isAuthoritative } from './core/authority.js';
+import { tutorial_skipTutorial } from './ui/commands.js';
+import { bindShardState, shardAction } from './core/shards.js';
+import { startLoop, setMode, syncWorldDay } from './core/loop.js';
 import { initApp, scheduleRender } from './ui/app.js';
 import { modal, showToast, h, kv } from './ui/dom.js';
 import { applyOffline } from './systems/offline.js';
-import { ensureDay } from './systems/rift.js';
 import { updateTutorial } from './systems/tutorial.js';
 import { stageInfo } from './data/realms.js';
+import { offlineProduction } from './ui/views/progression.js';
 import { fmtDuration, fmtInt } from './core/util.js';
 
 let state = null;
@@ -27,12 +28,14 @@ export const ready = boot().catch((e) => {
   throw e;
 });
 
+window.render_game_to_text = () => JSON.stringify({world:state?.side,stage:state?.player.stage,currencies:state?.currency,view:document.querySelector('#col-mid h1, #col-mid h2')?.textContent, pendingTale:state?.tales.pending?.id,commissionCount:state?.commissions.active.length,build:state?activeBuild(state):null,worldState:state?{name:worldState(state).name,phase:worldState(state).phase}:null});
+
 /* 调试入口：同步可得，state 在 ready 之后才有值 */
 window.__moxiu = {
   get state() { return state; },
   ready,
   Save,
-  reset: () => { Save.reset(); location.reload(); },
+  reset: async () => { if ((await (isAuthoritative(state) ? resetGame() : Save.resetAsync())).ok) location.reload(); },
 };
 
 /* ------------------------------------------------------------------ */
@@ -47,6 +50,9 @@ function showBootScreen(msg) {
 }
 
 function hideBootScreen() {
+  window.__moxiu_booted = true;
+  const fallback = document.getElementById('boot-fallback');
+  if (fallback) fallback.style.display = 'none';
   const el = document.getElementById('boot-screen');
   if (el) el.style.display = 'none';
 }
@@ -64,8 +70,9 @@ function showBootError(err) {
   }));
   el.appendChild(h('div.t-xs.t-dimmer', {
     style: 'max-width:520px;text-align:center;margin-top:12px',
-    text: '若反复出现，可在浏览器控制台执行 __moxiu.reset() 重置存档后重试。',
+    text: '进度未被覆盖。请检查网络后重新载入。',
   }));
+  el.appendChild(h('button.btn.mt-3', { text: '重新载入', onclick: () => location.reload() }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -88,6 +95,7 @@ async function resolveInitialSave(now) {
   }
 
   const chosen = await askLinkChoice(local, cloud);
+  showBootScreen('正在载入所选进度…');
   return { state: chosen === 'local' ? local : cloud, source: chosen };
 }
 
@@ -106,13 +114,15 @@ function describeSave(s, label) {
 }
 
 function askLinkChoice(local, cloud) {
+  const boot = document.getElementById('boot-screen');
+  if (boot) boot.style.display = 'none';
   return new Promise((resolve) => {
     modal({
       title: '发现两份存档',
-      subtitle: '云端和本地都有进度，需要你决定用哪一份',
+      subtitle: '云端和当前账号的本机备份不同，需要你决定用哪一份',
       sticky: true,
       body: h('div', null,
-        h('p.t-sm.t-dim.mb-2', { text: '选择后另一份不会被立刻删除，但之后只会继续写入选中的那一份。' }),
+        h('p.t-sm.t-dim.mb-2', { text: '本机备份可能包含尚未上传的操作。选择后将以所选进度继续保存到当前账号。' }),
         describeSave(cloud, '云端存档'),
         describeSave(local, '本地存档'),
       ),
@@ -130,6 +140,20 @@ function askLinkChoice(local, cloud) {
 async function boot() {
   const now = Date.now();
   showBootScreen('正在载入…');
+  const cloud = await prepareCloud();
+  if (cloud) {
+    showBootScreen('正在读取服务器角色…');
+    const loaded = await loadGame();
+    state = loaded.state;
+    bindShardState(state);
+    await shardAction().catch(() => {});
+    initApp(state, loaded.report);
+    startGameSync();
+    hideBootScreen();
+    if (passwordRecovery) (await import('./ui/account.js')).showAccount(true);
+    else if (loaded.report) showOfflineReport(loaded.report, 'server');
+    return state;
+  }
 
   // 先自检存档后端：隐私模式 / 配额超限要立刻让玩家知道，
   // 而不是等他玩了两小时才发现什么都没存下来。
@@ -141,28 +165,31 @@ async function boot() {
   if (!state.player.hp || state.player.hp <= 0) state.player.hp = null;
 
   Save.bindState(state);
-  Save.startAutoSave(() => state, 8000);
-  Save.installUnloadHook(() => state);
+  bindShardState(state);
+
 
   // 界潮日初始化 / 补发
-  ensureDay(state);
+  syncWorldDay(state);
   updateTutorial(state);
 
   // 离线收益（新档没有离线可言）
   const report = source === 'new' ? null : applyOffline(state, now);
 
-  initApp(state);
+  Save.startAutoSave(() => state, 8000);
+  Save.installUnloadHook(() => state);
+  initApp(state, report);
   startLoop(() => state);
   hideBootScreen();
 
-  if (!storage.ok) showStorageWarning(storage);
+  if (passwordRecovery) (await import('./ui/account.js')).showAccount(true);
+  else if (!storage.ok) showStorageWarning(storage);
   else if (report) showOfflineReport(report, source);
   else if (source === 'new') showWelcome(state);
 
   return state;
 }
 
-const SOURCE_LABEL = { local: '本地存档', cloud: '云端存档', new: '新档' };
+const SOURCE_LABEL = { local: '本地存档', cloud: '云端存档', server: '服务器角色', new: '新档' };
 
 function showStorageWarning(storage) {
   modal({
@@ -180,13 +207,14 @@ function showStorageWarning(storage) {
 }
 
 function showOfflineReport(report, source) {
+  const signed = (v) => `${v < 0 ? '−' : '+'}${fmtInt(Math.abs(v))}`;
   const rows = [
     kv('存档来源', SOURCE_LABEL[source] || source),
     kv('离线时长', fmtDuration(report.elapsedReal)),
     kv('世界时间推进', fmtDuration(report.worldMs)),
     kv('修为增长', `+${fmtInt(report.cult)}`),
-    kv('灵石', `+${fmtInt(report.stone)}`),
-    kv('现代收入', `+¥${fmtInt(report.cny)}`),
+    kv('灵石变化', signed(report.stone)),
+    kv('现代资金变化', `¥${signed(report.cny)}`),
     report.rp > 0.5 ? kv('研究点', `+${fmtInt(report.rp)}`) : null,
     report.stageTo > report.stageFrom ? kv('境界推进', `${report.stageFrom + 1} 阶 → ${report.stageTo + 1} 阶`) : null,
     report.capped ? kv('结算上限', '最多结算 3 天') : null,
@@ -195,7 +223,7 @@ function showOfflineReport(report, source) {
   modal({
     title: '你不在的时候',
     subtitle: '两界照常运转。当前世界满速结算，另一世界按 50% 结算。',
-    body: h('dl', { style: 'margin:0' }, rows),
+    body: h('div', null, h('dl', { style: 'margin:0' }, rows), offlineProduction(report)),
     actions: [{ label: '知道了', primary: true }],
   });
 }
@@ -212,12 +240,12 @@ function showWelcome(s) {
       h('p.t-sm.mt-2', { text: '两边的货币互不相通，两边的物价天差地别。你要做的，是每天借着界潮，把一边觉得廉价的东西，卖到另一边觉得昂贵的市场里。' }),
       h('hr.hr'),
       h('p.t-xs.t-dim', { text: '核心循环：发现机会 → 跨界倒卖 → 获得资本 → 投资生产 → 强化修仙 → 解锁新资源 → 反哺另一世界。' }),
-      h('p.t-xs.t-dim.mt-2', { text: '正式版内容：九大境界 · 八大副本 · 灵田牧场 · 炼丹炼器 · 灵科研究树 · 道侣灵兽 · 地产店铺 · 54 个奇闻事件 · 轮回与天命。' }),
+      h('p.t-xs.t-dim.mt-2', { text: '正式版内容：九大境界 · 八大副本与灵脉源头 · 灵田牧场 · 炼丹炼器 · 灵科研究树 · 道侣灵兽 · 地产店铺 · 持续世界状态与十七条故事线 · 轮回与天命。' }),
       h('hr.hr'),
-      h('p.t-xs.t-dim', { text: '时间模式：默认为「标准」——世界时钟对齐真实时间，界潮每日 05:00 全服统一刷新。若想快速体验完整流程，可在顶栏切到「沙盒」，那里可以 1×/10×/60× 快进。' }),
+      h('p.t-xs.t-dim', { text: '时间模式：默认为「标准」——世界时钟对齐真实时间，界潮每日 05:00 全服统一刷新。若想快速体验完整流程，可在顶栏「设置」切到「沙盒」，那里可以 1×/10×/60× 快进。' }),
     ),
     actions: [
-      { label: '跳过引导', onClick: () => { import('./systems/tutorial.js').then((m) => { m.skipTutorial(s); scheduleRender(); }); } },
+      { label: '跳过引导', onClick: async () => { await tutorial_skipTutorial(s); scheduleRender(); } },
       { label: '开始', primary: true, onClick: () => { setMode(s, 'standard'); } },
     ],
   });

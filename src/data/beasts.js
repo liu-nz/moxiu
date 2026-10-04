@@ -27,7 +27,7 @@ export const BATTLE_BEASTS = [
   },
   {
     id: 'huofeng', name: '火凤', tier: 4, atkRatio: 0.60, hpRatio: 0.30, spd: 1.35,
-    trait: '焚天', traitDesc: '合击附带灼烧，本场战斗伤害 +12%',
+    trait: '焚天', traitDesc: '出战时本场战斗伤害 +12%',
     unlockStage: 22,
     desc: '涅槃过一次的鸟。第二次飞起来的时候，天是红的。',
   },

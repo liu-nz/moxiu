@@ -1,3 +1,4 @@
+import {worldState} from '../data/worldStates.js';
 /**
  * character.js —— 角色最终属性计算（GDD 7）+ 修炼速率 + 战力
  *
@@ -20,6 +21,7 @@ import { projectEffects } from '../data/projects.js';
 import { lifestyleEffects } from './lifestyle.js';
 import { sideFactor, SIDE } from '../core/state.js';
 import { clamp } from '../core/util.js';
+import { founderMultiplier } from '../core/shards.js';
 
 /** 二级属性上限（GDD 7.3） */
 export const CAPS = {
@@ -252,7 +254,7 @@ const FATE_MODS = {
 };
 
 /** 计算最终属性 */
-export function computeAttrs(state) {
+export function computeAttrs(state, { competitive = false } = {}) {
   const base = baseAttrs(state.player.stage);
   const mods = collectMods(state);
 
@@ -282,12 +284,13 @@ export function computeAttrs(state) {
 
   const cultSpeed = clamp(
     (mods.cultSpeed || 0) + (ev.cultSpeedAdd || 0),
-    0, CAPS.cultSpeed,
+    -0.80, CAPS.cultSpeed,
   );
 
+  const creator = competitive ? 1 : founderMultiplier(state);
   return {
-    hpMax, mpMax, atk, def, spd,
-    critRate, critDmg, hit, dodge, lifesteal, dmgReduce, skillPower, cultSpeed,
+    hpMax: hpMax * creator, mpMax: mpMax * creator, atk: atk * creator, def: def * creator, spd: spd * creator,
+    critRate, critDmg, hit, dodge, lifesteal, dmgReduce, skillPower, cultSpeed: (1 + cultSpeed) * creator * (worldState(state).cultMult || 1) - 1,
     enhanceBonus: mods.enhanceBonus || 0,
     tradeProfit: mods.tradeProfit || 0,
     alchemy: mods.alchemy || 0,
@@ -314,8 +317,8 @@ export function cultivationRate(state, attrs) {
 }
 
 /** 战力估算（用于 UI 展示与排行榜，非游戏内数值） */
-export function combatPower(state) {
-  const a = computeAttrs(state);
+export function combatPower(state, options) {
+  const a = computeAttrs(state, options);
   return Math.round(
     a.atk * 3 + a.def * 2 + a.hpMax * 0.35 + a.spd * 4
     + a.critRate * 900 + a.critDmg * 400 + a.skillPower * 700

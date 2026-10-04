@@ -6,13 +6,16 @@
  */
 
 import { ITEM_MAP, CONSUMABLE_MAP, getItem } from '../data/items.js';
+import { PILL_QUALITY } from '../data/alchemy.js';
 import { QUALITY_MAP } from '../data/dungeons.js';
 import { uid } from '../core/util.js';
 
+export const validQuantity = (qty) => Number.isSafeInteger(qty) && qty > 0;
+
 export function addItem(state, itemId, qty = 1, quality = 'common') {
-  if (qty <= 0) return null;
+  if (!validQuantity(qty) || !getItem(itemId)) return null;
   const isConsumable = !!CONSUMABLE_MAP[itemId];
-  const q = isConsumable ? 'common' : quality;
+  const q = isConsumable ? (PILL_QUALITY[quality] ? quality : 'common') : quality;
   let entry = state.inventory.find((e) => e.itemId === itemId && e.quality === q);
   if (!entry) {
     entry = { uid: uid('it'), itemId, qty: 0, quality: q };
@@ -23,6 +26,7 @@ export function addItem(state, itemId, qty = 1, quality = 'common') {
 }
 
 export function removeItem(state, itemId, qty = 1, quality = null) {
+  if (!validQuantity(qty)) return 0;
   let left = qty;
   for (let i = state.inventory.length - 1; i >= 0 && left > 0; i--) {
     const e = state.inventory[i];
@@ -43,6 +47,7 @@ export function countOf(state, itemId, quality = null) {
 }
 
 export function removeEntry(state, entryUid, qty = 1) {
+  if (!validQuantity(qty)) return 0;
   const idx = state.inventory.findIndex((e) => e.uid === entryUid);
   if (idx < 0) return 0;
   const e = state.inventory[idx];

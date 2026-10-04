@@ -4,3 +4,11 @@ node_modules/
 dist/
 build/
 *.tmp
+
+# 本地浏览器验证产物
+test-results/
+
+# Local credentials and Supabase CLI cache are not published source.
+.env
+.env.*
+supabase/.temp/

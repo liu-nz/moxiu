@@ -5,21 +5,81 @@
 
 import { h, panel, panelFlush, bar, showToast } from '../dom.js';
 import { GUILDS, GUILD_BOSS, CHAMBER } from '../../data/guild.js';
-import {
-  guildSummary, joinGuild, leaveGuild, claimQuest, claimAllQuests,
-  buyFromShop, challengeBoss, joinChamber,
-} from '../../systems/guild.js';
+import { guildSummary } from '../../systems/guild.js';
+import { guild_joinGuild as joinGuild, guild_leaveGuild as leaveGuild, guild_claimQuest as claimQuest, guild_claimAllQuests as claimAllQuests, guild_buyFromShop as buyFromShop, guild_challengeBoss as challengeBoss, guild_joinChamber as joinChamber } from '../commands.js';
+import { renderArena } from './community.js';
 import { rankingSummary } from '../../systems/ranking.js';
 import { renderSect } from './sect.js';
 import { fmtInt, fmtDuration, fmtPct } from '../../core/util.js';
+import { cloudSession } from '../../core/cloud.js';
+import { socialAction, socialData, socialError, socialBusy } from '../../core/social.js';
+import { showAccount } from '../account.js';
+import { titleBadge } from '../titles.js';
+import { stageInfo } from '../../data/realms.js';
+import { accountIdentity } from '../account.js';
 
 let tab = 'sect';
+let peersRequested = false;
+let peerUidValue = '';
+let draftOwner = null;
+const peerDrafts = new Map();
 const TABS = [
+  { id: 'peers', name: '同行' },
   { id: 'sect', name: '宗门' },
   { id: 'guild', name: '道盟' },
   { id: 'chamber', name: '商会' },
   { id: 'rank', name: '排行榜' },
 ];
+
+function peersPanel(ctx) {
+  if (!cloudSession) return panel('异步同行', '邮箱账号功能', h('p.t-sm.t-dim', { text: '登录账号后，可添加好友、查看行者名片、互留留言，并送出让灵田或牧场缩短等待的照料。' }),
+    h('button.btn.btn-sm.mt-2', { text: '登录 / 注册', onclick: () => showAccount() }));
+  const data = socialData();
+  if (draftOwner !== cloudSession.user.id) { peerDrafts.clear(); draftOwner = cloudSession.user.id; }
+  const uid = h('input#peer-uid', { type: 'text', inputmode: 'numeric', pattern: '[0-9]*', maxlength: 8, value: peerUidValue, oninput: e => { peerUidValue = e.currentTarget.value; }, placeholder: '输入行者 UID', 'aria-label': '行者 UID' });
+  const run = async (action, payload) => {
+    try { await socialAction(action, payload); if (action === 'post') peerDrafts.delete(payload.uid); ctx.rerender(); }
+    catch (e) { showToast(e.message, 'warn'); ctx.rerender(); }
+  };
+  const request = h('button.btn.btn-sm', { text: '发送好友申请', disabled: socialBusy, onclick: () => {
+    const value = peerUidValue.trim();
+    if (!/^\d{8}$/.test(value)) return showToast('请输入 8 位行者 UID', 'warn');
+    run('request', { uid: Number(value) });
+  } });
+  if (!data && !socialBusy && !peersRequested) { peersRequested = true; run('read', {}); }
+  const friendRows = (data?.friends || []).map(friend => {
+    const content = h('textarea', { maxlength: 240, rows: 2, oninput: e => peerDrafts.set(friend.uid, e.currentTarget.value), placeholder: '写一段留言（最多 240 字）', 'aria-label': `给 ${friend.role_name} 留言` }, peerDrafts.get(friend.uid) || '');
+    return h('div.shard-record', null,
+      h('div.flex-between', null, h('strong.t-sm', { text: `${friend.role_name} · UID ${friend.uid}` }),
+        h('button.btn.btn-sm.btn-ghost', { text: '解除同行', disabled: socialBusy, onclick: () => run('remove', { id: friend.id }) })),
+      h('div.mt-2', null, titleBadge(friend.title)),
+      h('p.t-xs.t-dim.mt-1', { text: friend.stage == null ? '行者尚未公布修行进度' : `${stageInfo(friend.stage).stage.name} · 参考战力 ${fmtInt(friend.power || 0)}` }),
+      friend.updated_at ? h('p.t-xs.t-dimmer', { text: `最近活动 ${new Date(friend.updated_at).toLocaleString('zh-CN')}` }) : null,
+      content,
+      h('div.btn-row.mt-2', null,
+        h('button.btn.btn-sm', { text: '留言', disabled: socialBusy, onclick: () => { if (!content.value.trim()) return showToast('先写下留言内容', 'warn'); run('post', { uid: friend.uid, kind: 'message', content: content.value.trim() }); } }),
+        h('button.btn.btn-sm', { text: '送上修行祝福', disabled: socialBusy, onclick: () => run('post', { uid: friend.uid, kind: 'blessing', content: content.value.trim() || '愿道友修行顺遂。' }) }),
+        h('button.btn.btn-sm', { text: friend.help_sent ? '今日已送照料' : '送出同行照料', disabled: socialBusy || friend.help_sent, onclick: () => run('help', { uid: friend.uid }) })));
+  });
+  return h('div.flex-col.gap-4', null,
+    panel('我的行者名片', 'UID 用于添加同行', accountIdentity()),
+    panel('异步同行', `${data?.friends.length || 0} 位好友`,
+      h('p.t-xs.t-dim', { text: '通过 UID 添加好友，双方接受后可互留留言。每天最多为五位好友各送一份照料，接收方在首页领取；每天最多领取一次，缩短一块灵田或一个牧场栏位至多五分钟等待，24 小时有效。' }),
+      h('div.btn-row.mt-2', null, uid, request,
+        h('button.btn.btn-sm.btn-ghost', { text: '刷新', disabled: socialBusy, onclick: () => { peersRequested = true; run('read', {}); } })),
+      socialError ? h('p.t-xs.t-fall.mt-2', { role: 'status', text: socialError }) : null,
+      !data ? h('p.t-sm.t-dim.mt-2', { text: socialBusy ? '正在读取同行名册…' : '点击刷新读取名册。' }) : null,
+      (data?.incoming || []).map(item => h('div.rowitem.mt-2', null, h('div.rowitem-main', { text: `${item.role_name} · UID ${item.uid} 请求同行` }),
+        h('div.rowitem-act', null, h('button.btn.btn-sm', { text: '接受', disabled: socialBusy, onclick: () => run('accept', { id: item.id }) }),
+          h('button.btn.btn-sm.btn-ghost', { text: '忽略', disabled: socialBusy, onclick: () => run('remove', { id: item.id }) })))),
+      (data?.outgoing || []).map(item => h('p.t-xs.t-dim.mt-1', { text: `已向 ${item.role_name}（UID ${item.uid}）发送申请` })),
+      friendRows.length ? friendRows : h('p.t-sm.t-dim.mt-2', { text: '还没有好友。登录并交换行者 UID 后即可开始。' })),
+    panel('留言与祝福', '最近 50 条', data?.notes.length ? data.notes.map(note => h('div.shard-record', null,
+      h('strong.t-sm', { text: `${note.author_name} · ${note.kind === 'blessing' ? '修行祝福' : '留言'}` }),
+      h('p.t-xs.t-dim.mt-1', { text: note.content }),
+      h('p.t-xs.t-dimmer', { text: `${note.author_uid} → ${note.owner_uid} · ${new Date(note.created_at).toLocaleString('zh-CN')}` }))) : h('p.t-sm.t-dim', { text: data ? '暂无留言。' : '登录后读取同行留言。' })),
+  );
+}
 
 function guildPanel(state, ctx) {
   const s = guildSummary(state);
@@ -41,7 +101,7 @@ function guildPanel(state, ctx) {
           h('button.btn.btn-sm.btn-solid', {
             text: '入盟',
             disabled: state.currency.stone < g.joinCost.stone,
-            onclick: () => { const r = joinGuild(state, g.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+            onclick: async () => { const r = await joinGuild(state, g.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
           }),
         ),
       ))),
@@ -67,7 +127,7 @@ function guildPanel(state, ctx) {
             class: q.claimable ? 'btn-solid' : '',
             text: `+${q.quest.contribution} 贡献`,
             disabled: !q.claimable,
-            onclick: () => { const r = claimQuest(state, q.quest.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+            onclick: async () => { const r = await claimQuest(state, q.quest.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
           }),
       ),
       h('div.mt-2', null, bar(ratio)),
@@ -90,7 +150,7 @@ function guildPanel(state, ctx) {
       h('button.btn.btn-sm', {
         text: '兑换',
         disabled: x.locked || !x.affordable || x.boughtToday >= 3,
-        onclick: () => { const r = buyFromShop(state, x.item.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+        onclick: async () => { const r = await buyFromShop(state, x.item.id); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
       }),
     ),
   )));
@@ -123,7 +183,7 @@ function guildPanel(state, ctx) {
           h('div.t-sm.t-jade', { text: g.perk }),
           h('div.t-xs.t-dim', { text: g.desc }),
         ),
-        h('button.btn.btn-sm.btn-ghost', { text: '退盟', onclick: () => { leaveGuild(state); ctx.rerender(); } }),
+        h('button.btn.btn-sm.btn-ghost', { text: '退盟', onclick: async () => { await leaveGuild(state); ctx.rerender(); } }),
       ),
       h('dl', { style: 'margin:12px 0 0' },
         h('dl.kv', null, h('dt', { text: '当前贡献' }), h('dd.t-num', { text: fmtInt(s.contribution) })),
@@ -136,7 +196,7 @@ function guildPanel(state, ctx) {
         h('h3', { text: '每日集体任务' }),
         h('button.btn.btn-sm', {
           text: '一键领取',
-          onclick: () => { const r = claimAllQuests(state); if (r.ok) showToast(`共获得 ${r.total} 贡献`, 'good'); ctx.rerender(); },
+          onclick: async () => { const r = await claimAllQuests(state); if (r.ok) showToast(`共获得 ${r.total} 贡献`, 'good'); ctx.rerender(); },
         }),
       ),
       quests,
@@ -151,8 +211,8 @@ function bossModal(state, ctx) {
     h('div.mt-3', null, GUILD_BOSS.ranks.map((r) => h('button.btn.btn-block.mt-2', {
       style: 'text-align:left',
       text: `${r.name}　伤害 ×${r.mul}`,
-      onclick: () => {
-        const res = challengeBoss(state, r.id);
+      onclick: async () => {
+        const res = await challengeBoss(state, r.id);
         ctx.closeOverlay();
         if (!res.ok) { showToast(res.reason, 'warn'); return; }
         ctx.modal({
@@ -179,7 +239,7 @@ function chamberPanel(state, ctx) {
         : h('button.btn.btn-solid', {
           text: `入会（${fmtInt(s.cost)} 灵石）`,
           disabled: state.currency.stone < s.cost,
-          onclick: () => { const r = joinChamber(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
+          onclick: async () => { const r = await joinChamber(state); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); },
         }),
     ),
   );
@@ -190,8 +250,8 @@ function rankingPanel(state) {
   const titles = Object.entries(s.titles || {});
 
   return h('div.flex-col.gap-4', null,
-    panel('排行榜', `第 ${s.week + 1} 周　·　${s.daysLeft} 天后结算`,
-      h('p.t-sm.t-dim', { text: '榜单每周刷新一批天选者。对手以你刷新那一刻的水平为基准生成，周内缓慢成长——你涨得比他们快，名次就会往上走。' }),
+    panel('NPC 模拟排行榜', `第 ${s.week + 1} 周　·　${s.daysLeft} 天后结算`,
+      h('p.t-sm.t-dim', { text: '榜单对手由本机游戏规则模拟生成，不是真实玩家排行，也不发放服务器竞技奖励。' }),
       titles.length
         ? h('div.mt-3', null,
           h('div.t-xs.t-dim.mb-1', { text: '当前称号' }),
@@ -229,10 +289,11 @@ export function renderSocial(state, ctx) {
   })));
 
   let body = null;
-  if (tab === 'sect') body = renderSect(state, ctx);
+  if (tab === 'peers') body = peersPanel(ctx);
+  else if (tab === 'sect') body = renderSect(state, ctx);
   else if (tab === 'guild') body = guildPanel(state, ctx);
   else if (tab === 'chamber') body = chamberPanel(state, ctx);
-  else body = rankingPanel(state);
+  else body = h('div.flex-col.gap-4', null, renderArena(state,ctx), h('details',null,h('summary.t-sm',{text:'NPC演练榜与原称号'}),rankingPanel(state)));
 
   return h('div.flex-col.gap-4', null, strip, body);
 }

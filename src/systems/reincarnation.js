@@ -7,15 +7,26 @@
  */
 
 import { FATES, FATE_MAP, BLESSINGS, BLESSING_MAP, CODEX, settleReincarnation } from '../data/fates.js';
-import { REALMS, FLAT_STAGES } from '../data/realms.js';
+import { FLAT_STAGES, stageInfo } from '../data/realms.js';
 import { rollEquipment } from '../data/equipment.js';
-import { createInitialState, SIDE } from '../core/state.js';
+import { createInitialState } from '../core/state.js';
 import { logHl, logGood, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
-import { fmtInt } from '../core/util.js';
+import { ensureDay } from './rift.js';
+import { markCollection } from './collection.js';
+
+export const ASCENSION_RESET = '境界与修为、货币与本世统计、背包与配装、灵田牧场灵兽、炼制与副本、职业商业地产、宗门道盟商会、生活工程、界门与自动设置';
+export const ASCENSION_KEEP = '轮回点与累计点数、图鉴与永久天赋、道侣缘分、已完成研究及一半研究点（实验室重建）、奇闻见闻与历史最佳名次';
+
+export function fateChoicePending(state) {
+  const r = state.reincarnation;
+  return !!r && r.count > 0 && !r.fate && (r.awaitingFate || state.player.stage === 0);
+}
 
 export function canAscend(state) {
-  return state.player.stage >= FLAT_STAGES.length - 1;
+  return state.player.stage === FLAT_STAGES.length - 1
+    && state.player.cultivation >= stageInfo(state.player.stage).stage.need
+    && state.player.ascensionReady === true;
 }
 
 export function ascensionPreview(state) {
@@ -24,69 +35,39 @@ export function ascensionPreview(state) {
 
 /** 飞升：结算并重置 */
 export function ascend(state) {
-  if (!canAscend(state)) return { ok: false, reason: '尚未到渡劫大圆满。' };
+  if (!canAscend(state)) return { ok: false, reason: '需渡劫大圆满修为圆满，并在修炼页成功渡过雷劫。' };
   const settle = settleReincarnation(state);
 
-  state.reincarnation.count += 1;
-  state.reincarnation.points += settle.total;
-  state.reincarnation.earned += settle.total;
-
-  // 图鉴解锁
-  for (const c of CODEX) state.reincarnation.codex[c.id] = true;
-
-  const kept = {
-    points: state.reincarnation.points,
-    count: state.reincarnation.count,
-    companions: state.companions,
-    research: state.research,
-    estate: state.estate,
-    tales: state.tales,
-    blessings: state.reincarnation.blessings,
-    codex: state.reincarnation.codex,
+  const old = state.reincarnation;
+  const next = createInitialState(state.world.clockMs);
+  next.createdAt = state.createdAt;
+  next.savedAt = state.savedAt;
+  next.playMs = state.playMs;
+  next.world = { ...state.world };
+  next.reincarnation = {
+    ...next.reincarnation, count: old.count + 1, points: old.points + settle.total,
+    earned: old.earned + settle.total, blessings: { ...old.blessings },
+    codex: { ...old.codex }, awaitingFate: true,
   };
-
-  // 重置本世
-  state.player.stage = 0;
-  state.player.cultivation = 0;
-  state.player.totalCultivation = 0;
-  state.player.hp = null;
-  state.player.mp = null;
-  state.player.stamina = 100;
-  state.player.staminaAcc = 0;
-  state.player.breakthroughFails = 0;
-  state.player.breakthroughBuff = 0;
-  state.player.buffs = [];
-  state.player.pillsUsed = 0;
-
-  state.currency.stone = 0;
-  state.currency.cny = 2000;
-  state.inventory = [];
-  state.equipment = { weapon: null, helmet: null, armor: null, boots: null, ring1: null, ring2: null, artifact: null };
-  state.tech = [];
-  state.bag = [];
-  state.skills = { heart: null, move1: null, move2: null, special: null };
-  state.skillBag = [];
-
-  state.farm = { plots: [], unlocked: 3 };
-  state.ranch = { slots: [], unlocked: 2 };
-  state.beasts = { owned: [], deployed: [] };
-  state.crafting = { autoAlchemy: false, lastAutoAt: 0, totalPills: state.crafting?.totalPills || 0, totalForged: state.crafting?.totalForged || 0 };
-  state.dungeon = { cleared: {}, runs: 0, fails: 0, log: [] };
-
-  state.rift.gateLevel = 1;
-  state.rift.crossings = 0;
-  state.rift.day = null;
-  state.rift.startDay = null;
-  state.side = SIDE.MODERN;
-
-  // 研究点保留一半（知识仍在，但需要重新积累）
-  state.research.points = Math.floor((kept.research?.points || 0) * 0.5);
-
-  state.tutorial.step = 0;
-  state.tutorial.done = {};
-
-  // 天命
-  if (!state.reincarnation.fate) state.reincarnation.fate = null;
+  for (const c of CODEX) next.reincarnation.codex[c.id] = true;
+  next.companions = structuredClone(state.companions);
+  next.collection = structuredClone(state.collection || next.collection);
+  next.market.quoteLockDay=state.market.quoteLockDay;
+  next.commissions.relations = {...state.commissions?.relations};
+  next.commissions.chains = {...state.commissions?.chains};
+  next.commissions.total = state.commissions?.total || 0;
+  next.commissions.sources = [...(state.commissions?.sources || [])];
+  next.commissions.history = structuredClone(state.commissions?.history || []);
+  next.research.done = { ...state.research.done };
+  next.research.points = Math.floor((state.research.points || 0) * 0.5);
+  next.tales.seen = { ...state.tales?.seen };
+  next.tales.count = state.tales?.count || 0;
+  next.tales.history = structuredClone(state.tales?.history || []);
+  next.tales.flags = { ...state.tales?.flags };
+  next.social.ranking.bestRanks = { ...state.social?.ranking?.bestRanks };
+  // 按新开局统一重置，避免新系统意外继承上世资产或任务。
+  Object.assign(state, next);
+  ensureDay(state, { silent: true });
 
   logHl(state, `飞升轮回：第 ${state.reincarnation.count} 世结束，获得轮回点 ${settle.total}（累计 ${state.reincarnation.points}）。`);
   emit(EV.STATE);
@@ -95,18 +76,21 @@ export function ascend(state) {
 
 /** 选择天命（开启新一轮前必须选） */
 export function chooseFate(state, fateId) {
+  if (!fateChoicePending(state)) return { ok: false, reason: '天命仅在轮回开局选择一次，本世不可改选或重复领取。' };
   const f = FATE_MAP[fateId];
   if (!f) return { ok: false, reason: '没有这个天命。' };
   state.reincarnation.fate = fateId;
+  state.reincarnation.awaitingFate = false;
 
   // 天命开局资源
   const mods = f.mods || {};
-  if (mods.startCny) state.currency.cny = mods.startCny;
-  if (mods.startStone) state.currency.stone = mods.startStone;
+  if (mods.startCny) state.currency.cny += mods.startCny - 2000;
+  if (mods.startStone) state.currency.stone += mods.startStone;
   if (mods.startPlots) state.farm.unlocked = Math.max(state.farm.unlocked, 3 + mods.startPlots);
 
   if (mods.startWeaponTier !== undefined) {
     const eq = rollEquipment('weapon', mods.startWeaponTier, 24);
+    markCollection(state, 'equipment', `${eq.slot}:${eq.tier}`);
     eq.name = '天命·' + eq.name;
     state.bag.push(eq);
   }

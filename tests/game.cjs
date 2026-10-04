@@ -1,0 +1,87 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const { gameFixture } = require('./game-fixture.cjs');
+const user={id:'6135c290-a19a-4892-9e9b-80d64ba14811',email:'game@example.invalid',aud:'authenticated',role:'authenticated'};
+(async()=>{
+ const game=await gameFixture();
+ const browser=await chromium.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',headless:true});
+ const errors=[],checks=[];
+ const check=(v,label)=>{assert(v,label);checks.push(label);};
+ try {
+  const context=await browser.newContext({viewport:{width:1440,height:1000}});
+  const exp=Math.floor(Date.now()/1000)+3600;
+  const token=`${Buffer.from('{}').toString('base64url')}.${Buffer.from(JSON.stringify({sub:user.id,exp,role:'authenticated'})).toString('base64url')}.fixture`;
+  await context.addInitScript(({user,exp,token})=>{
+   localStorage.setItem('moxiu.cloud.enabled','1');
+   localStorage.setItem('moxiu.supabase.auth',JSON.stringify({access_token:token,refresh_token:'fixture',expires_at:exp,token_type:'bearer',user}));
+  },{user,exp,token});
+  let legacyWrites=0;
+  await context.route('https://zqgcijakvjzvvtecdacj.supabase.co/**',async route=>{
+   const endpoint=route.request().url(); let data;
+   if(endpoint.includes('/functions/v1/moxiu-game'))return game.handle(route);
+   if(endpoint.includes('/auth/v1/user'))data=user;
+   else if(endpoint.includes('/moxiu_player_profiles'))data={uid:10000001,role_name:'墨山行者',name_confirmed:true};
+   else if(endpoint.includes('/moxiu_shards'))data={balance:0,title:null,catalog:[],owned:[],orders:[],ledger:[],review:[],history:[],admin:false};
+   else {if(endpoint.includes('/moxiu_write_test_save'))legacyWrites++;data=[];}
+   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
+  });
+  const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+  const enter=async p=>{await p.goto(process.env.MOXIU_URL||'http://127.0.0.1:3000/');await p.waitForFunction(()=>!!window.__moxiu?.ready);await p.evaluate(()=>window.__moxiu.ready);const b=p.getByRole('button',{name:'知道了',exact:true});if(await b.isVisible())await b.click();};
+  const nav=async (p,id)=>p.evaluate(id=>import('./src/ui/app.js').then(m=>m.navigate(id)),id);
+  const cmd=async (p,name,...args)=>p.evaluate(async({name,args})=>{const m=await import('./src/ui/commands.js');return m[name](window.__moxiu.state,...args);},{name,args});
+  await enter(page);
+  check((await page.locator('#topbar').innerText()).includes('服务器角色'),'original home boots authoritative character');
+  check(!(await page.locator('#col-left').innerText()).includes('联机试运行'),'duplicate experimental navigation removed');
+  await page.evaluate(()=>{window.__moxiu.state.currency.cny=999999999;window.__moxiu.state.inventory.push({uid:'forged',itemId:'jingmi',qty:999,quality:'common'});});
+  check((await cmd(page,'modern_chooseJob','dev')).ok,'career change uses unified command');
+  check(await page.evaluate(()=>window.__moxiu.state.currency.cny<3000 && !window.__moxiu.state.inventory.some(x=>x.uid==='forged')),'local forged money and bag are replaced by server snapshot');
+  await nav(page,'market');
+  const row=page.locator('.rowitem').filter({has:page.getByText('精密工具',{exact:true})});
+  await row.getByRole('button',{name:'买 1',exact:true}).click();
+  game.loseNext=true;
+  await page.getByRole('button',{name:'确认成交',exact:true}).click();
+  await page.getByRole('button',{name:'重试确认',exact:true}).waitFor();
+  const original=game.calls.find(x=>x.action==='trade.buy'),costBalance=game.state.currency.cny;
+  check((await cmd(page,'modern_upgradeJob')).ok===false,'uncertain settlement blocks new spending');
+  game.syncConflictOnce=true;
+  await page.evaluate(()=>import('./src/core/game.js').then(m=>m.refreshGame().catch(()=>{})));
+  check(await page.evaluate(()=>import('./src/core/game.js').then(m=>!!m.gamePending())),'sync conflict cannot erase uncertain command');
+  game.expireOnce=true;
+  await page.evaluate(()=>import('./src/core/game.js').then(m=>m.refreshGame(true).catch(()=>{})));
+  check(await page.evaluate(()=>import('./src/core/game.js').then(m=>!!m.gamePending())),'expired login preserves original uncertain command for later recovery');
+  await enter(page);
+  await page.getByRole('button',{name:'重试确认',exact:true}).click();
+  await page.waitForFunction(()=>import('./src/core/game.js').then(m=>!m.gameBusy&&!m.gamePending()));
+  const retry=game.calls.filter(x=>x.action==='trade.buy');
+  check(retry.length===3 && retry.every(x=>x.request_id===original.request_id) && game.state.inventory.filter(x=>x.itemId==='jingmi').length===1,'reload retry reuses receipt and never duplicates purchased items');
+  check(game.state.currency.cny>=costBalance && game.state.currency.cny-costBalance<1,'retry does not debit again');
+  await nav(page,'gate');
+  await page.getByRole('button',{name:'确认背包并开启界门',exact:true}).click();
+  await page.getByRole('heading',{name:'穿行两界',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'已抵达修仙界',exact:true}).waitFor();
+  await page.getByRole('button',{name:'前往当地市场',exact:true}).click();
+  await page.getByRole('tab',{name:'出货',exact:true}).click();
+  await page.getByRole('button',{name:'全卖',exact:true}).click();
+  await page.getByRole('button',{name:'确认成交',exact:true}).click();
+  await page.waitForFunction(()=>window.__moxiu.state.inventory.every(x=>x.itemId!=='jingmi'));
+  check(game.state.side==='cultivation' && game.state.currency.stone>0,'original gate arrival and market sell share one server bag and wallet');
+  await nav(page,'home');
+  check((await cmd(page,'objectives_setObjective','home')).ok && game.state.objective==='home','custom goal saved with the same character');
+  const other=await context.newPage();other.on('pageerror',e=>errors.push(e.message));await enter(other);
+  const oldRev=game.revision;
+  check((await cmd(other,'modern_chooseJob','designer')).ok,'second device updates server character');
+  check(game.revision>oldRev && (await cmd(page,'modern_chooseJob','doctor')).ok===false && game.state.modern.job==='designer','stale device gets conflict and cannot overwrite new character');
+  await page.evaluate(()=>import('./src/ui/dom.js').then(m=>m.closeAllOverlays()));
+  await nav(page,'character');
+  await page.getByRole('heading',{name:'服务器角色',exact:true}).waitFor();
+  check(await page.getByRole('button',{name:'导入存档',exact:true}).count()===0,'account character cannot import client assets');
+  await page.setViewportSize({width:390,height:844});
+  for(const id of ['home','market','gate','farm','modern','dungeon','character']){await nav(page,id);check(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`mobile ${id} has no overflow`);}
+  await nav(page,'home');await page.screenshot({path:'test-results/统一服务器角色手机.png',fullPage:true});
+  check(legacyWrites===0,'authoritative boot and commands never upload legacy full client save');
+  check(errors.length===0,'no browser runtime errors');
+  fs.writeFileSync('test-results/game-checks.json',JSON.stringify({passed:checks.length,checks},null,2));
+  console.log(JSON.stringify({passed:checks.length,checks}));
+ }finally{await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

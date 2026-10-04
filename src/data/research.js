@@ -61,7 +61,7 @@ export const PROJECTS = [
   {
     id: 'autopill', branch: 'alchemy', name: '自动炼丹机', cost: 110, req: ['database'],
     effect: { autoAlchemy: true },
-    effectDesc: '离线自动炼丹（每次界潮刷新时结算一批）',
+    effectDesc: '解锁按指定丹方自动炼丹：每 30 分钟最多 3 炉，可设预算保留线',
     desc: '炉子会自己看火。你终于可以睡觉了。',
   },
 
@@ -105,6 +105,13 @@ export const PROJECTS = [
     desc: '你终于搞明白了炼器为什么会炸——是应力集中。',
   },
 ];
+
+PROJECTS.push(
+ {id:'powerarmor',branch:'material',name:'双槽动力装甲',cost:180,req:['alloy','battery'],effect:{powerArmor:true},effectDesc:'可制造占用衣服与头盔的动力装甲，防御与气血增强，首领蓄力减伤20%',desc:'将灵能工程与材料工程结合成一套完整装甲。'},
+ {id:'sustainedpill',branch:'alchemy',name:'灵金缓释丹衣',cost:140,req:['database','matanalyze'],effect:{sustainedPill:true},effectDesc:'丹修可炼缓释丹：修炼丹持续三倍时间，但效果为原方75%',desc:'药性数据库与灵金材料共同控制释放速度。'},
+  {id:'neuralinterface',branch:'compute',name:'灵能神经接口',cost:150,req:['sensor','meridian'],effect:{neuralInterface:true},effectDesc:'副本每第三回合连携一次，追加本次伤害的 25%',desc:'传感器与经脉模型连接出新的施法节奏。'},
+  {id:'adaptiveward',branch:'material',name:'自适应灵能护甲',cost:180,req:['alloy','battery'],effect:{adaptiveWard:true},effectDesc:'副本首个蓄力大招伤害减半，每场仅一次',desc:'护甲只在最危险的瞬间释放储能。'}
+);
 
 export const PROJECT_MAP = Object.fromEntries(PROJECTS.map((p) => [p.id, p]));
 

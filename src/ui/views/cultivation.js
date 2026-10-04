@@ -6,22 +6,25 @@ import { h, panel, bar, kv } from '../dom.js';
 import { FLAT_STAGES, stageInfo, TIER_SUCCESS, BREAKTHROUGH_PITY, BREAKTHROUGH_FAIL_LOSS } from '../../data/realms.js';
 import { researchEffects } from '../../data/research.js';
 import { computeAttrs } from '../../systems/character.js';
-import { cultivationRate, stageProgress, breakthroughInfo, attemptBreakthrough } from '../../systems/cultivation.js';
+import { cultivationRate, stageProgress, breakthroughInfo, breakthroughLossMultiplier } from '../../systems/cultivation.js';
+import { cultivation_attemptBreakthrough as attemptBreakthrough, cultivation_setBreakthroughAutomation as setBreakthroughAutomation } from '../commands.js';
 import { combatPower } from '../../systems/combat.js';
 import { PATHS, getPath } from '../../data/paths.js';
 import { fmtInt, fmtPct, fmtShort, fmtDuration } from '../../core/util.js';
 import { getEvent } from '../../data/worldEvents.js';
 import { SIDE, SIDE_NAME } from '../../core/state.js';
-import { switchPath, pathSwitchStatus } from '../../systems/gear.js';
+import { pathSwitchStatus } from '../../systems/gear.js';
+import { gear_switchPath as switchPath } from '../commands.js';
 import { showToast } from '../dom.js';
 
 function breakthroughModal(state, ctx) {
+  if (state.player.ascensionReady) { ctx.ascendModal(); return; }
   const info = breakthroughInfo(state);
   if (!info.available) { showToast(info.reason, 'warn'); return; }
   if (info.locked) { showToast(info.reason, 'warn'); return; }
 
   const attrs = computeAttrs(state);
-  const lossMul = researchEffects(state).breakthroughLossMul;
+  const lossMul = breakthroughLossMultiplier(state);
   const rows = [
     kv('当前境界', `${info.from.realm.name} · ${info.from.stage.name}`),
     kv('目标', info.ascension ? '飞升轮回' : `${info.toRealm.name} · 初期`),
@@ -34,8 +37,8 @@ function breakthroughModal(state, ctx) {
     kv('失败代价', `损失当前修为的 ${fmtPct(BREAKTHROUGH_FAIL_LOSS * lossMul, 0)}（不掉境界）`),
   ].filter(Boolean);
 
-  const doIt = () => {
-    const res = attemptBreakthrough(state);
+  const doIt = async () => {
+    const res = await attemptBreakthrough(state);
     if (!res.ok) { showToast(res.reason, 'warn'); return; }
     ctx.rerender();
     if (res.ascension) {
@@ -89,13 +92,13 @@ function pathModal(state, ctx) {
           class: state.path === p.id ? 'btn-solid' : '',
           text: state.path === p.id ? '已在此道' : (first ? '择此道' : (sw.freeReady ? '免费改修' : '改修')),
           disabled: state.path === p.id,
-          onclick: () => {
-            const r = switchPath(state, p.id);
+          onclick: async () => {
+            const r = await switchPath(state, p.id);
             if (!r.ok) { showToast(r.reason, 'warn'); return; }
             state.tutorial.done.path = true;
             ctx.closeOverlay();
             ctx.rerender();
-            showToast(r.free ? `免费改修「${p.name}」之道。` : `已改修「${p.name}」之道。`, 'good');
+            showToast(r.first ? `已选择「${p.name}」之道。` : r.free ? `免费改修「${p.name}」之道。` : `已改修「${p.name}」之道。`, 'good');
           },
         }),
       ),
@@ -182,7 +185,7 @@ export function renderCultivation(state, ctx) {
   );
 
   /* ---- 境界路标 ---- */
-  const roadmap = panel('境界路标', `共 ${FLAT_STAGES.length} 阶（MVP 开放至筑基）`,
+  const roadmap = panel('境界路标', `共 ${FLAT_STAGES.length} 阶（九境界已开放）`,
     h('div', { style: 'max-height:340px;overflow:auto' },
       FLAT_STAGES.map((s) => {
         const gi = s.globalIndex;
@@ -225,7 +228,10 @@ export function renderCultivation(state, ctx) {
       ),
   );
 
-  return h('div.flex-col.gap-4', null, main, pathPanel, roadmap);
+  const automation = panel('闭关突破托管', state.player.autoBreakthrough ? '已开启' : '已关闭',
+    h('p.t-xs.t-dim', { text: '先亲自尝试一次跨境突破，之后可托管。修为圆满时按真实成功率自动尝试，失败照常逸散修为并推进保底，已有丹药加成照常消耗。不会自动买药、选择道途或渡最终雷劫、飞升。' }),
+    h('button.btn.btn-sm.mt-2', { text: state.player.autoBreakthrough ? '关闭突破托管' : '开启突破托管', disabled: state.player.stage < 10 && !(state.stats.breakthroughAttempts > 0), onclick: async () => { const r = await setBreakthroughAutomation(state, !state.player.autoBreakthrough); if (!r.ok) showToast(r.reason, 'warn'); ctx.rerender(); } }));
+  return h('div.flex-col.gap-4', null, main, automation, pathPanel, roadmap);
 }
 
 export { pathModal, breakthroughModal };

@@ -35,6 +35,8 @@ export function createInitialState(nowMs) {
       mp: null,
       stamina: 100,
       staminaAcc: 0,
+      ascensionReady: false,
+      autoBreakthrough: false,
       breakthroughFails: 0,
       breakthroughBuff: 0,    // 一次性突破加成（筑基丹）
       buffs: [],              // [{id, name, until, mods}]
@@ -54,6 +56,7 @@ export function createInitialState(nowMs) {
       lastCrossAt: 0,
     },
 
+    cargo: { storage: { modern: [], cultivation: [] } },
     inventory: [],            // [{uid, itemId, qty, quality}]
 
     equipment: {
@@ -80,18 +83,25 @@ export function createInitialState(nowMs) {
       jobLevel: 1,
       businessLevel: 0,
       workOn: true,
+      reserveCny: 0,
+      industries: {},
     },
 
     /* ---- 灵田（GDD 11.1）---- */
     farm: {
       plots: [],              // [{cropId, plantedAt, readyAt}] | null
       unlocked: 3,
+      plan: {},
+      autoHarvest: true,
+      autoReplant: true,
+      reserveStone: 0,
     },
 
     /* ---- 灵脉牧场（GDD 11.2）---- */
     ranch: {
       slots: [],              // [{beastId, lastAt}] | null
       unlocked: 2,
+      autoCollect: true,
     },
 
     /* ---- 灵兽 ---- */
@@ -104,6 +114,11 @@ export function createInitialState(nowMs) {
     crafting: {
       autoAlchemy: false,
       lastAutoAt: 0,
+      autoAcc: 0,
+      selectedRecipe: 'huiyuan',
+      selectedAux: 'plain',
+      reserveStone: 0,
+      history: [],
       totalPills: 0,
       totalForged: 0,
       seen: {},               // 已炼过的丹方（药性分析仪首次提示用）
@@ -128,6 +143,8 @@ export function createInitialState(nowMs) {
       warehouseLevel: 0,
       autoSell: false,
       sellAcc: 0,
+      saleMode: 'surplus',
+      keep: {},
     },
 
     /* ---- 奇闻事件（GDD 14.1）---- */
@@ -136,6 +153,9 @@ export function createInitialState(nowMs) {
       seen: {},
       count: 0,
       pending: null,
+      history: [],
+      schedule: null,
+      flags: {},
     },
 
     /* ---- 轮回与天命（GDD 16）---- */
@@ -146,6 +166,7 @@ export function createInitialState(nowMs) {
       blessings: {},          // { [blessingId]: level }
       codex: {},
       fate: null,
+      awaitingFate: false,
       freePathSwitchAt: 0,
     },
 
@@ -201,7 +222,14 @@ export function createInitialState(nowMs) {
     /* ---- 城市灵改工程（GDD 1.3 后期反哺）---- */
     projects: {
       done: {},
+      target: null,
     },
+
+    /* ---- 玩家自选长期目标 ---- */
+    objective: null,
+
+    commissions: { day: null, completed: [], active: [], history: [], total: 0, sources: [] },
+    collection: { beasts: [], ranch: [], crops: [], equipment: [] },
 
     /* ---- 每日 / 每周统计（用于道盟任务与排行榜）---- */
     daily: {
@@ -225,13 +253,14 @@ export function createInitialState(nowMs) {
     },
 
     dungeon: {
+      materialTargets: {},
       cleared: {},            // `${id}:${diff}` → 次数
       runs: 0,
       fails: 0,
       log: [],
     },
 
-    tutorial: { step: 0, done: {} },
+    tutorial: { step: 0, done: {}, skipped: false, journey: {} },
 
     stats: {
       profit: 0,

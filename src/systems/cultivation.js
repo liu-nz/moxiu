@@ -18,13 +18,19 @@ import { clamp, fmtInt, fmtPct } from '../core/util.js';
 import { syncGateLevel } from './rift.js';
 import { updateTutorial } from './tutorial.js';
 import { researchEffects } from '../data/research.js';
+import { lifestyleEffects } from './lifestyle.js';
 import { isAscensionReady } from '../data/realms.js';
 
 /** 主循环：修为增长 */
 export function tickCultivation(state, dtMs) {
   const secs = dtMs / 1000;
   if (secs <= 0) return 0;
-  const gain = cultivationRate(state) * secs;
+  let gain = cultivationRate(state) * secs;
+  if(state.path === 'speed' && state.side === SIDE.CULTIVATION && state.player.trainingBudget > 0) {
+    const spend=Math.min(secs*.1,state.player.trainingBudget,state.currency.stone);
+    gain += cultivationRate(state) * .35 * (spend/.1);
+    state.currency.stone -= spend;state.player.trainingBudget=Math.max(0,state.player.trainingBudget-spend);
+  }
   state.player.cultivation += gain;
   state.player.totalCultivation += gain;
   advanceIfReady(state);
@@ -42,7 +48,12 @@ export function advanceIfReady(state) {
 
     const isTop = info.stageIndex === info.realm.stages.length - 1;
     if (isTop) {
-      state.player.cultivation = need;   // 封顶，等待突破
+      state.player.cultivation = need;
+      const bt = nextBreakthrough(state.player.stage);
+      if (state.player.autoBreakthrough && !bt?.ascension && !bt?.locked) {
+        const result = attemptBreakthrough(state);
+        if (result.success) { advanced = true; continue; }
+      }
       break;
     }
     state.player.cultivation -= need;
@@ -52,6 +63,8 @@ export function advanceIfReady(state) {
     const ni = stageInfo(state.player.stage);
     logGood(state, `修为圆满，晋入「${ni.realm.name} · ${ni.stage.name}」。`);
     if (ni.stage.note) logHl(state, ni.stage.note);
+    const newlyUnlocked={2:'秘境与连续故事',4:'功法配装',10:'筑基内容与缓释丹研究',14:'高阶丹器与铁心兰',22:'白灵与轮回预览'}[state.player.stage];
+    if(newlyUnlocked) logHl(state,`新功能解锁：${newlyUnlocked}。`);
     syncGateLevel(state);
     updateTutorial(state);
     emit(EV.STATE);
@@ -95,11 +108,17 @@ export function breakthroughInfo(state) {
 }
 
 /** 执行突破 */
+export function breakthroughLossMultiplier(state) {
+  return researchEffects(state).breakthroughLossMul * (1 - lifestyleEffects(state).breakthroughLossCut);
+}
+
 export function attemptBreakthrough(state) {
+  if (state.player.ascensionReady) return { ok: false, reason: '雷劫已渡过，可以在轮回页确认飞升。' };
   const info = breakthroughInfo(state);
   if (!info.available) return { ok: false, reason: info.reason };
   if (info.locked) return { ok: false, reason: info.reason, locked: true };
   if (!info.full) return { ok: false, reason: info.reason };
+  state.stats.breakthroughAttempts = (state.stats.breakthroughAttempts || 0) + 1;
 
   const success = info.pity || Math.random() < info.chance;
 
@@ -110,13 +129,14 @@ export function attemptBreakthrough(state) {
   if (info.ascension) {
     if (!success) {
       state.player.breakthroughFails += 1;
-      const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * researchEffects(state).breakthroughLossMul;
+      const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * breakthroughLossMultiplier(state);
       state.player.cultivation = Math.max(0, state.player.cultivation - lost);
       logWarn(state, `雷劫未过。修为逸散 ${fmtInt(lost)}。${info.pityLeft > 1 ? '再试一次。' : '下次必定飞升。'}`);
       emit(EV.BREAKTHROUGH, { success: false, ascension: true });
       emit(EV.STATE);
       return { ok: true, success: false, ascension: true };
     }
+    state.player.ascensionReady = true;
     logHl(state, '九重雷劫已过。你站在飞升台上，看见了两个世界同时在你脚下。');
     emit(EV.BREAKTHROUGH, { success: true, ascension: true });
     emit(EV.STATE);
@@ -132,6 +152,8 @@ export function attemptBreakthrough(state) {
     const ni = stageInfo(state.player.stage);
     logHl(state, `突破成功！你踏入「${ni.realm.name} · ${ni.stage.name}」。`);
     if (ni.stage.note) logHl(state, ni.stage.note);
+    const newlyUnlocked={2:'秘境与连续故事',4:'功法配装',10:'筑基内容与缓释丹研究',14:'高阶丹器与铁心兰',22:'白灵与轮回预览'}[state.player.stage];
+    if(newlyUnlocked) logHl(state,`新功能解锁：${newlyUnlocked}。`);
     syncGateLevel(state);
     updateTutorial(state);
     emit(EV.BREAKTHROUGH, { success: true, stage: state.player.stage });
@@ -140,7 +162,7 @@ export function attemptBreakthrough(state) {
   }
 
   state.player.breakthroughFails += 1;
-  const lossMul = researchEffects(state).breakthroughLossMul;
+  const lossMul = breakthroughLossMultiplier(state);
   const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * lossMul;
   state.player.cultivation = Math.max(0, state.player.cultivation - lost);
   const left = Math.max(0, BREAKTHROUGH_PITY - state.player.breakthroughFails);
@@ -169,3 +191,15 @@ export function stageProgress(state) {
 }
 
 export { stageInfo, needOf, cultivationRate };
+
+export function setBreakthroughAutomation(state, on) {
+  if (typeof on !== 'boolean' || (on && state.player.stage < 10 && !(state.stats.breakthroughAttempts > 0))) return { ok: false, reason: '先亲自尝试一次跨境突破，再开启闭关托管。' };
+  state.player.autoBreakthrough = on; emit(EV.STATE); return { ok: true };
+}
+/** 晋层/跨境也必须切片，否则长段离线会一直使用旧境界速率。 */
+export function nextCultivationEvent(state) {
+  const progress = stageProgress(state), bt = nextBreakthrough(state.player.stage);
+  if (progress.isTop && (!state.player.autoBreakthrough || bt?.ascension || bt?.locked)) return Infinity;
+  const rate = cultivationRate(state);
+  return rate > 0 ? Math.max(1, (progress.need - progress.cur) / rate * 1000) : Infinity;
+}

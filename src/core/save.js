@@ -16,6 +16,7 @@ import { emit, EV } from './bus.js';
 let _timer = null;
 let _state = null;
 let _providerId = DEFAULT_PROVIDER;
+let _unloadPaused = false;
 
 /** 存档运行状态（供 UI 展示） */
 const status = {
@@ -170,6 +171,7 @@ export async function loadAsync() {
     if (!raw) return null;
     return migrate(typeof raw === 'string' ? JSON.parse(raw) : raw);
   } catch (e) {
+    if (p.strictRead) throw e;
     console.warn('[save] 远程存档读取失败', e);
     return null;
   }
@@ -178,17 +180,28 @@ export async function loadAsync() {
 /** 自动存档：每 intervalMs 落一次盘 */
 export function startAutoSave(getState, intervalMs = 8000) {
   stopAutoSave();
+  _unloadPaused = false;
   _timer = setInterval(() => save(getState()), intervalMs);
 }
 
-export function stopAutoSave() {
+export function stopAutoSave({ pauseUnload = false } = {}) {
+  if (pauseUnload) _unloadPaused = true;
   if (_timer) { clearInterval(_timer); _timer = null; }
 }
 
 export function reset() {
   const p = getProvider(_providerId);
-  try { p.remove(SAVE_KEY); return { ok: true }; }
+  try { return p.remove(SAVE_KEY) || { ok: true }; }
   catch { return { ok: false }; }
+}
+
+/** 云端重置必须等待确认，失败时保留当前角色供导出。 */
+export async function resetAsync() {
+  stopAutoSave({ pauseUnload: true });
+  if (!isAsyncProvider()) return reset();
+  const result = await saveAsync(createInitialState(Date.now()));
+  if (!result.ok) startAutoSave(() => _state, 30000);
+  return result;
 }
 
 /* ---------------- 导出 / 导入（换设备或迁移到云端前的备份手段） ---------------- */
@@ -208,9 +221,9 @@ export function exportFileName() {
 
 /** 页面关闭前落盘 */
 export function installUnloadHook(getState) {
-  window.addEventListener('beforeunload', () => save(getState()));
+  window.addEventListener('beforeunload', () => { if (!_unloadPaused) save(getState()); });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') save(getState());
+    if (!_unloadPaused && document.visibilityState === 'hidden') save(getState());
   });
 }
 

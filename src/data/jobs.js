@@ -6,7 +6,7 @@
 export const JOBS = [
   {
     id: 'dev', name: '程序员', base: 88, growth: 1.34, baseCost: 1200,
-    desc: '工资最高，但你要在修仙界和加班之间做选择。',
+    desc: '起薪较高，职级成长稳定；投资提升工资，也要为跨界进货留出资金。',
   },
   {
     id: 'designer', name: '设计师', base: 70, growth: 1.32, baseCost: 900,

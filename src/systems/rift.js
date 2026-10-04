@@ -1,3 +1,5 @@
+import {hasAffix} from '../data/affixes.js';
+import {activeBuild} from '../data/builds.js';
 /**
  * rift.js —— 界潮与界门系统（GDD 3）
  *
@@ -13,7 +15,7 @@ import { refreshDay } from './market.js';
 import { carryWeight } from './inventory.js';
 import { getEvent } from '../data/worldEvents.js';
 import { projectEffects } from '../data/projects.js';
-import { updateTutorial } from './tutorial.js';
+import { updateTutorial, noteTutorialCross } from './tutorial.js';
 import { rollDaily } from './daily.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtDuration } from '../core/util.js';
@@ -55,7 +57,7 @@ export function carryCapacity(state) {
     : 0;
   const blessing = (state.reincarnation?.blessings?.gate || 0) * 1;
   const city = projectEffects(state).gateCarry || 0;
-  return base + warehouse + blessing + city;
+  return base + warehouse + blessing + city + (hasAffix(state,'shanggu')?10:0) + (activeBuild(state)==='merchant'?5:0);
 }
 
 /** 每日每方向的基础穿越次数 */
@@ -159,6 +161,7 @@ export function cross(state, toSide) {
   if (toSide === SIDE.CULTIVATION) state.rift.toCultivation -= 1;
   else state.rift.toModern -= 1;
 
+  noteTutorialCross(state, toSide);
   state.rift.crossings += 1;
   state.stats.crossings += 1;
   state.rift.lastCrossAt = state.world.clockMs;

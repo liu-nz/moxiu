@@ -241,3 +241,96 @@
 @media (prefers-reduced-motion:reduce){
   *{animation-duration:.001s !important;transition-duration:.001s !important;}
 }
+
+/* 第一阶段：纸墨修行 / 都市面板，共享阅读层级 */
+body[data-world="cultivation"]{--bg:#f7f4ec;--bg-raised:#efebe1;--bg-sunken:#e9e4d7;--line:#ddd6c8;--ink:#272b27;--ink-3:#696e64;--ink-4:#7c8177;background:linear-gradient(110deg,#eae5d8,var(--bg) 35%,#f2efe7);}
+body[data-world="modern"]{--bg:#fafbfc;--bg-raised:#f0f3f6;--bg-sunken:#e8edf1;--ink:#1c2530;--ink-3:#637080;--ink-4:#758191;--line:#dbe1e6;--radius:8px;background-color:#f1f4f7;background-image:linear-gradient(#dde3e940 1px,transparent 1px),linear-gradient(90deg,#dde3e940 1px,transparent 1px);background-size:36px 36px;}
+body[data-world="modern"] h1,body[data-world="modern"] h2,body[data-world="modern"] h3,body[data-world="modern"] .viewtab{font-family:var(--font-sans);}
+.stage{max-width:1480px;grid-template-columns:240px minmax(0,1fr) 280px;gap:24px;padding:28px 24px;}
+.col-left,.col-right{position:static;max-height:none;}
+.topbar-inner{max-width:1480px;gap:16px;min-height:76px;}
+.topres{gap:22px;}
+.worldtab{padding:0 18px;}
+.header-gate{align-self:center;margin-left:12px;}
+.header-settings{position:relative;align-self:center;font-size:12px;}
+.header-settings summary{cursor:pointer;padding:8px;}
+.settings-popover{position:absolute;right:0;top:36px;min-width:240px;padding:16px;border:1px solid var(--line);background:var(--bg);box-shadow:0 8px 24px #0002;z-index:10;}
+.settings-popover .speedctl{border:0;padding:0;flex-wrap:wrap;}
+.viewtabs{border-color:var(--line);border-radius:var(--radius);min-height:46px;}
+.viewtab{font-size:13px;}
+.menu-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}
+.menu-entry{padding:12px 8px;background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--radius);font:inherit;font-size:12px;text-align:left;cursor:pointer;color:var(--ink);}
+.menu-entry:hover{border-color:var(--ink);}
+.avatar-seal{width:56px;height:56px;display:grid;place-items:center;margin:auto;border:1px solid var(--ink);font:28px var(--font-serif);background:var(--bg-raised);}
+.home-hero{padding:32px;background:var(--bg);border:1px solid var(--line-ink);border-radius:var(--radius);position:relative;overflow:hidden;}
+.home-hero:before{content:"";position:absolute;right:-70px;top:-90px;width:240px;height:240px;border:1px solid var(--line);border-radius:50%;pointer-events:none;}
+.eyebrow{font-size:11px;color:var(--ink-3);letter-spacing:.16em;margin-bottom:16px;}
+.hero-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+.hero-heading h1{font-size:32px;}
+.hero-rate{display:flex;align-items:baseline;gap:12px;padding:20px 0;font:44px var(--font-mono);}
+.hero-rate small{font:12px var(--font-sans);color:var(--ink-3);}
+.goal-block{border-top:1px solid var(--line);margin-top:28px;padding-top:24px;}
+.goal-block .eyebrow{margin-bottom:8px;}
+.gate-intro{padding:24px;border-left:3px solid var(--ink);background:var(--bg-raised);}
+.gate-intro h1{font-size:25px;}
+.gate-warning{border-left:3px solid var(--rise);padding:8px 12px;color:var(--rise);background:var(--bg-sunken);font-size:12px;}
+.log-list{flex-direction:column;}
+.gate-transition{color:#fff;text-align:center;background:#171d22;width:min(520px,100%);padding:42px 24px;border:1px solid #778e94;}
+.gate-ring{width:110px;height:110px;margin:0 auto 24px;border:2px solid #b1cec9;border-radius:50%;box-shadow:0 0 40px #90c5bc55,inset 0 0 30px #90c5bc55;animation:gate-pulse .8s ease-in-out infinite alternate;}
+.gate-transition p{margin-top:16px;font-size:13px;color:#b9d0cb;}
+@keyframes gate-pulse{from{transform:scale(.9);opacity:.65;}to{transform:scale(1.08);opacity:1;}}
+button:focus-visible,summary:focus-visible{outline:2px solid var(--jade);outline-offset:3px;}
+@media(max-width:1200px){.stage{grid-template-columns:210px minmax(0,1fr);}.col-right{grid-column:1/-1;}.topbar-inner{flex-wrap:wrap;padding:10px 20px;}.topres{gap:16px;}.rift-chip{border:0;}.col-right>.flex-col{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}}
+@media(max-width:860px){
+  .stage{display:flex;flex-direction:column;padding:14px 12px;gap:16px;}.col{width:100%;}.col-mid{order:0;}.col-left{order:1;}.col-right{order:2;}.col-right>.flex-col{display:flex;}
+  .topbar-inner{padding:8px 12px;gap:8px;}.brand{padding:0;}.topres{gap:12px;padding:0;}.topres>.res:nth-child(3),.rift-chip{display:none;}.worldtabs{border-top:0;order:3;min-height:38px;gap:4px;}.worldtab{padding:7px 4px;font-size:12px;border:1px solid var(--line)!important;}.header-gate{margin-left:0;padding:8px;}.header-settings summary{padding:4px;}
+  .viewtabs{display:none;}.subtabs{flex-wrap:wrap;}.subtab{min-height:40px;}.home-hero{padding:24px 20px;}.hero-heading h1{font-size:28px;}.hero-rate{font-size:38px;}.hero-heading{flex-wrap:wrap;}
+  .mobilenav-inner{overflow:hidden;}.mobilenav button{flex:1 1 0;min-width:0;min-height:58px;border-right:0;font-family:var(--font-sans);}.mobilenav button:nth-child(3){font-weight:700;}.mobilenav button.on{box-shadow:inset 0 3px var(--jade);}.gate-intro h1{font-size:21px;}.btn-row>.btn{white-space:normal;}.modal-foot{flex-wrap:wrap;}body{padding-bottom:calc(74px + env(safe-area-inset-bottom));}
+}
+@media(prefers-reduced-motion:reduce){.gate-ring{animation:none;}}
+
+/* 第二阶段：市场报价与经营选择 */
+.market-tabs { display:flex; gap:8px; }
+.market-tabs .btn { flex:1; }
+.market-opportunities { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.opportunity-card { padding:14px; border:1px solid var(--line); background:var(--bg-sunken); min-width:0; }
+.opportunity-card .t-num { font-size:14px; overflow-wrap:anywhere; }
+.market-row .rowitem-main { min-width:0; }
+.market-details { margin-top:8px; }
+.market-details summary, .market-local summary { cursor:pointer; font-size:12px; color:var(--ink-3); padding:4px 0; }
+.market-details p { white-space:pre-line; line-height:1.8; }
+.market-local { padding:16px; }
+.market-local > summary { font-size:15px; color:var(--ink); }
+.quote-detail { white-space:pre-line; line-height:2; overflow-wrap:anywhere; }
+.investment-note { margin-top:12px; padding:12px; border-left:2px solid var(--ink); background:var(--bg-sunken); line-height:1.8; }
+@media (max-width:700px) {
+  .market-opportunities { grid-template-columns:1fr; }
+  .opportunity-card { display:flex; flex-wrap:wrap; align-items:center; gap:10px; }
+  .opportunity-card > strong { width:100%; }
+  .market-row { align-items:flex-start; flex-direction:column; }
+  .market-row .rowitem-act { width:100%; flex-wrap:wrap; justify-content:flex-end; }
+  .market-row .rowitem-price { margin-right:auto; }
+}
+
+/* 洞府生产：每块田有独立续种计划，控制项在手机上自然换行。 */
+.production-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr)); gap:10px; }
+.production-tile { border:1px solid var(--line); padding:12px; min-width:0; }
+.production-field { display:flex; flex-direction:column; gap:5px; min-width:0; }
+.production-field select,.production-field input,.production-tile select { width:100%; min-width:0; max-width:100%; padding:8px; border:1px solid var(--line); background:var(--bg-raised); color:var(--ink); font:inherit; }
+.production-controls { display:flex; flex-wrap:wrap; align-items:end; gap:10px; padding:12px; border:1px solid var(--line); }
+.production-controls .production-field { flex:1 1 150px; }
+.production-controls p { width:100%; }
+.production-materials { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr)); gap:10px; }
+.production-choice { text-align:left; white-space:normal; height:auto; padding:12px; display:flex; flex-direction:column; gap:5px; }
+
+.growth-phases { display:flex; flex-wrap:wrap; gap:6px; }
+.engineering-impact { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:10px; }
+
+/* Account-bound fragment shop and manual collection review. */
+.shard-tiers { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr)); gap:8px; }
+.shard-tier { min-height:48px; white-space:normal; }
+.shard-qr { display:block; width:100%; max-width:330px; height:auto; margin-inline:auto; }
+.shard-record { padding:12px 0; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+.shard-form input:not([type=checkbox]) { width:100%; min-width:0; padding:10px; background:var(--bg-raised); color:var(--ink); border:1px solid var(--line); font:inherit; }
+.shard-form label { display:flex; align-items:center; gap:8px; }
+.shard-payment { overflow-wrap:anywhere; }

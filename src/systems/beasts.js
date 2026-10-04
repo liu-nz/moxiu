@@ -9,6 +9,7 @@ import { sectMods } from './character.js';
 import { logGood, logHl, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
 import { uid, fmtInt } from '../core/util.js';
+import { markCollection } from './collection.js';
 
 export function ownedBeasts(state) {
   return (state.beasts?.owned || []).map((b) => ({
@@ -23,6 +24,7 @@ export function capture(state, beastId) {
   if (!def) return null;
   const b = { uid: uid('bs'), id: beastId, level: 1, at: state.world.clockMs };
   state.beasts.owned.push(b);
+  markCollection(state, 'beasts', beastId);
   logHl(state, `捕获灵兽「${def.name}」！`);
   if ((state.beasts.deployed || []).length < DEPLOY_LIMIT) deploy(state, b.uid, true);
   emit(EV.STATE);

@@ -4,6 +4,7 @@
  * 另含 GDD 10.1 的「现代科技装备」：抗生素 / 强光手电 / 合金刀，带机制效果而非纯加属性。
  */
 
+import { AFFIXES } from './affixes.js';
 import { rint, pick, uid, clamp } from '../core/util.js';
 
 export const SLOTS = [
@@ -108,6 +109,7 @@ export function rollEquipment(slot, tierIndex, scale) {
     uid: uid('eq'),
     slot,
     tier: tier.id,
+    rule: tierIndex >= 2 && Math.random() < .25 ? pick(Object.entries(AFFIXES).filter(([,a])=>a.slots.includes(slot)).map(([id])=>id).concat(slot==='weapon'?['execute']:slot==='armor'?['chargeguard']:[])) : null,
     name: pick(NAME_POOL[slot] || NAME_POOL.weapon),
     enhance: 0,
     stats,
