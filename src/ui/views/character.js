@@ -443,15 +443,15 @@ export function renderCharacter(state, ctx) {
     goodsRows.length ? goodsRows : h('div.empty', { text: '背包是空的。' }),
   );
   const collections = collectionSections(state);
-  const collection = panel('收藏图鉴', '只记录发现，不提供战斗属性',
-    h('p.t-xs.t-dim.mb-2', { text: '首次收获作物、养殖或捕获灵兽、获得对应部位品阶装备时解锁。图鉴随轮回保留；集齐分类获得免费展示称号，可在称号收藏中佩戴。' }),
+  const collection = panel('收藏图鉴', '两界录 · 发现与世界记忆',
+    h('p.t-xs.t-dim.mb-2', { text: '记录真实发现、客户往来、秘境难度与掉落、故事和灵科。物品售出后仍保留发现；两界录随轮回保留。灵兽、作物和装备品阶原有收集称号仍可获得，其他分类记录探索进度。' }),
     collections.map(section => h('details.mt-2', null,
       h('summary.t-sm', { text: `${section.label} · ${section.rows.filter(x => x.unlocked).length}/${section.rows.length}` }),
-      h('p.t-xs.t-jade.mt-2', { text: `收藏奖励：${section.reward} · 纯展示` }),
+      section.reward ? h('p.t-xs.t-jade.mt-2', { text: `收藏奖励：${section.reward} · 纯展示` }) : null,
       section.rows.map(row => h('div.rowitem.mt-2', null,
         h('div.rowitem-main', null, h('strong.t-xs', { text: `${row.unlocked ? '✓' : '○'} ${row.name}` }),
           h('p.t-xs.t-dim', { text: row.unlocked ? row.note : '尚未发现' }), h('p.t-xs.t-dimmer', { text: row.source })),
-        h('button.btn.btn-sm', { text: state.side === 'modern' ? '前往界门' : '前往发现', onclick: () => ctx.navigate(state.side === 'modern' ? 'gate' : row.view) }))))));
+        h('button.btn.btn-sm', { text: state.side === 'modern' && ['dungeon','farm','craft'].includes(row.view) ? '前往界门' : '前往发现', onclick: () => ctx.navigate(state.side === 'modern' && ['dungeon','farm','craft'].includes(row.view) ? 'gate' : row.view) }))))));
 
   return h('div.flex-col.gap-4', null,
     panel('账号身份', '轮回 / 重置后保留', accountIdentity()),

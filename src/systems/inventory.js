@@ -8,6 +8,7 @@
 import { ITEM_MAP, CONSUMABLE_MAP, getItem } from '../data/items.js';
 import { PILL_QUALITY } from '../data/alchemy.js';
 import { QUALITY_MAP } from '../data/dungeons.js';
+import { markCollection } from './collection.js';
 import { uid } from '../core/util.js';
 
 export const validQuantity = (qty) => Number.isSafeInteger(qty) && qty > 0;
@@ -22,6 +23,7 @@ export function addItem(state, itemId, qty = 1, quality = 'common') {
     state.inventory.push(entry);
   }
   entry.qty += qty;
+  markCollection(state,'items',itemId);
   return entry;
 }
 

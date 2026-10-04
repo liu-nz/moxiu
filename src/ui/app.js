@@ -2,6 +2,7 @@
  * app.js —— UI 编排：顶部 / 左栏 / 中栏视图 / 右栏
  */
 
+import {currentGoals} from '../systems/objectives.js';
 import { h, panel, panelFlush, bar, mount, resetLive, refreshLive, showToast, modal as domModal, closeOverlay } from './dom.js';
 import { renderExploration } from './views/activity.js';
 import { renderBuild } from './views/build.js';
@@ -180,6 +181,7 @@ function liveValue(key) {
   if (!s) return '';
   if (key.startsWith('investment:')) { const [,kind,id] = key.split(':'); return !investmentAllowed(s,kind,id); }
   if (key.startsWith('projectNotReady:')) return !cityStatus(s,key.split(':')[1])?.canStart;
+  if(key.startsWith('goalText:')){const g=currentGoals(s).find(x=>x.id===key.slice(9));return g ? `${Math.round(g.progress/g.total*100)}% · ${g.missing}` : '目标已更新。';}
   if (key.startsWith('researchNotReady:')) return !canResearch(s,key.split(':')[1]).ok;
   if (key.startsWith('farm')) {
     const [kind, index] = key.split(':'), p = s.farm.plots[Number(index)];

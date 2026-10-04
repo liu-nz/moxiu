@@ -107,6 +107,7 @@ export const PROJECTS = [
 ];
 
 PROJECTS.push(
+ {id:'compiler',branch:'compute',name:'灵识编译器',cost:180,req:['meridian','neuralinterface'],secret:'compiler',effect:{skillPower:.05},effectDesc:'功法威力额外 +5%，研究仍消耗180点并需完成神经接口',desc:'一次秘密发现让你看懂了灵识指令，但它仍需通过研究完成。'},
  {id:'powerarmor',branch:'material',name:'双槽动力装甲',cost:180,req:['alloy','battery'],effect:{powerArmor:true},effectDesc:'可制造占用衣服与头盔的动力装甲，防御与气血增强，首领蓄力减伤20%',desc:'将灵能工程与材料工程结合成一套完整装甲。'},
  {id:'sustainedpill',branch:'alchemy',name:'灵金缓释丹衣',cost:140,req:['database','matanalyze'],effect:{sustainedPill:true},effectDesc:'丹修可炼缓释丹：修炼丹持续三倍时间，但效果为原方75%',desc:'药性数据库与灵金材料共同控制释放速度。'},
   {id:'neuralinterface',branch:'compute',name:'灵能神经接口',cost:150,req:['sensor','meridian'],effect:{neuralInterface:true},effectDesc:'副本每第三回合连携一次，追加本次伤害的 25%',desc:'传感器与经脉模型连接出新的施法节奏。'},
@@ -165,6 +166,7 @@ export function researchEffects(state) {
 export function canResearch(state, id) {
   const p = PROJECT_MAP[id];
   if (!p) return { ok: false, reason: '没有这项研究。' };
+  if(p.secret && !(state.collection?.secrets || []).includes(p.secret))return {ok:false,reason:'尚未发现隐藏研究线索。'};
   if (state.research?.done?.[id]) return { ok: false, reason: '已完成。' };
   for (const r of p.req) {
     if (!state.research?.done?.[r]) {

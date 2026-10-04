@@ -66,7 +66,7 @@ function alchemySection(state, ctx) {
       !st.ok ? h('p.t-xs.t-rise.mt-2', { text: st.reason }) : null) : null,
     st.recipe ? h('details.mt-3', null, h('summary.t-sm',{text:'辅材长期产出比较'}),
       h('p.t-xs.t-dim.mt-2',{text:'以下是大量开炉的数学期望，不保证单次结果。灵石成本包含平均反噬，不包括材料价值；主辅材仍按上方实际数量消耗。品质强度是丹药基础强度，具体丹药按实际效果取整。'}),
-      AUXILIARIES.map(aux=>{const e=alchemyEconomics(state,id,aux.id);return h('p.t-xs.mt-2',{text:`${aux.name}${e.locked?' · 尚未解锁':''}：平均每炉${e.expectedPills.toFixed(2)}枚 · 每成丹约${e.stonePerPill.toFixed(1)}灵石 · 成功后平均基础强度${(e.meanPotency*100).toFixed(1)}% · 每100炉约${e.rarePer100.toFixed(1)}炉出稀有`});})) : null,
+      AUXILIARIES.map(aux=>{const e=alchemyEconomics(state,id,aux.id);if(!e)return h('p.t-xs.mt-2',{text:`${aux.name} · 不适用于当前丹方或尚未满足使用条件`});return h('p.t-xs.mt-2',{text:`${aux.name}${e.locked?' · 尚未解锁':''}：平均每炉${e.expectedPills.toFixed(2)}枚 · 每成丹约${e.stonePerPill.toFixed(1)}灵石 · 成功后平均基础强度${(e.meanPotency*100).toFixed(1)}% · 每100炉约${e.rarePer100.toFixed(1)}炉出稀有`});})) : null,
     h('div.production-controls.mt-3', null,
       h('button.btn.btn-sm', { text: `自动炼丹：${state.crafting.autoAlchemy ? '开' : '关'}`, disabled: !fx.autoAlchemy, onclick: async () => await change({ on: !state.crafting.autoAlchemy }) }),
       reserveField(state.crafting.reserveStone || 0, '炼丹保留灵石', async reserveStone => await setAlchemyPlan(state, { reserveStone })),
@@ -106,14 +106,16 @@ function forgeSection(state, ctx) {
             text: `${st.matName || getItem(r.mat)?.name || r.mat} ${countOf(state, r.mat)}/${r.qty}　`,
           }),
           h('span.t-dimmer', { text: `灵石 ${fmtInt(r.cost)}` }),
+          r.desc ? h('p.t-xs.t-dim',{text:r.desc}) : null,
+          st.reason ? h('p.t-xs.t-dimmer',{text:st.reason}) : null,
         ),
       ),
       h('div.rowitem-act', null,
         h('button.btn.btn-sm.btn-solid', {
-          text: `锻造 ${SLOTS.find((s) => s.id === forgeSlot)?.name || ''}`,
+          text: `锻造 ${SLOTS.find((s) => s.id === (r.slot || forgeSlot))?.name || ''}`,
           disabled: locked || !st.ok,
           onclick: async () => {
-            const res = await forge(state, r.id, forgeSlot);
+            const res = await forge(state, r.id, r.slot || forgeSlot);
             if (!res.ok) showToast(res.reason, 'warn');
             ctx.rerender();
           },

@@ -3,6 +3,7 @@
  * 职业挂机工资 + 商业等级（降低进货成本、提供被动收入）
  */
 
+import { discoverResearch } from './discoveries.js';
 import { JOB_MAP, jobRate, jobUpgradeCost, BUSINESS } from '../data/jobs.js';
 import { projectEffects } from '../data/projects.js';
 import { sideFactor, SIDE } from '../core/state.js';
@@ -50,6 +51,7 @@ export function chooseJob(state, jobId) {
     state.modern.jobLevel = Math.max(1, state.modern.jobLevel - 1);
   }
   state.modern.job = jobId;
+  discoverResearch(state);
   state.modern.jobLevel = state.modern.jobLevel || 1;
   logGood(state, `入职「${JOB_MAP[jobId].name}」，当前 Lv.${state.modern.jobLevel}。`);
   updateTutorial(state);

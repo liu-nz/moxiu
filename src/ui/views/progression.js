@@ -4,7 +4,7 @@ import { finance_setInvestmentReserve as setInvestmentReserve } from '../command
 import { reserveField } from './production.js';
 import { getItem } from '../../data/items.js';
 import { fmtInt } from '../../core/util.js';
-import { OBJECTIVE_OPTIONS, objectiveStatus } from '../../systems/objectives.js';
+import { OBJECTIVE_OPTIONS, objectiveStatus, currentGoals } from '../../systems/objectives.js';
 import { objectives_setObjective as setObjective } from '../commands.js';
 
 export function objectivePanel(state, ctx) {
@@ -14,13 +14,14 @@ export function objectivePanel(state, ctx) {
     if (!r.ok) showToast(r.reason, 'warn');
     ctx.rerender();
   } }, h('option', { value: '', selected: !goal, text: '暂不设置' }),
-    OBJECTIVE_OPTIONS.map(x => h('option', { value: x.id, selected: x.id === goal?.id, text: x.label })));
-  return panel('我的目标', goal ? `${goal.progress}/${goal.total}` : '由你决定下一步',
-    h('label.t-xs.t-dim', { text: '选择一项长期目标，游戏会展示当前进度、缺口和入口。' }), select,
-    goal ? h('div.mt-2', null,
-      h('p.t-sm.t-strong', { text: goal.done ? `已完成：${goal.label}` : goal.label }),
-      h('p.t-xs.t-dim.mt-1', { text: goal.missing }),
-      h('button.btn.btn-sm.mt-2', { text: goal.done ? '继续探索' : '前往处理', onclick: () => ctx.navigate(goal.view) })) : null);
+    OBJECTIVE_OPTIONS.filter(x=>x.id!=='research:compiler' || (state.collection?.secrets || []).includes('compiler')).map(x => h('option', { value: x.id, selected: x.id === goal?.id, text: x.label })));
+  return panel('我的目标', '主要 · 推荐 · 自选长期目标',
+    currentGoals(state).map(g=>h('div.rowitem.mt-2',null,
+      h('div.rowitem-main',null,h('strong.t-sm',{text:`${g.kind} · ${g.label}`}),
+        h('p.t-xs.t-dim',{live:`goalText:${g.id}`,text:`${Math.round(g.progress/g.total*100)}% · ${g.missing}` })),
+      h('button.btn.btn-sm',{text:g.done?'继续探索':'前往处理',onclick:()=>ctx.navigate(goalDestination(state,g.view).view)}))),
+    h('label.t-xs.t-dim.mt-3', { text: '自选一项长期目标；最多显示三项建议，不要求逐项完成。' }),select);
+
 }
 export function growthPanel(state, ctx) {
   const roadmap = growthRoadmap(state), goal = roadmap.next;

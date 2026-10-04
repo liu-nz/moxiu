@@ -37,7 +37,7 @@ const { gameFixture } = require('./game-fixture.cjs');
   await eggs.getByRole('button',{name:'接取委托',exact:true}).click();await page.waitForFunction(()=>window.__moxiu.state.commissions.active.some(x=>x.id==='breakfast-eggs'));
   await nav('home');check(await page.getByText('早餐店试吃订单 · 现代都市',{exact:true}).count()===1,'accepted order appears on home');
   await page.getByText('连续故事与同行手记',{exact:true}).click(); await page.getByRole('heading',{name:'连续故事',exact:true}).waitFor(); check(await page.getByRole('heading',{name:'连续故事',exact:true}).count()===1,'story journal uses existing homepage');
-  await nav('character');await page.getByText('牧场灵兽 · 0/3',{exact:true}).click();
+  await nav('character');await page.getByText('异兽志 · 牧场灵兽 · 0/3',{exact:true}).click();
   check(await page.getByText('○ 灵鸡',{exact:true}).count()===1,'undiscovered codex reveals discovery target and source');
   await nav('social');await page.getByRole('button',{name:'同行',exact:true}).click();await page.getByText('青云客 · UID 10000002',{exact:true}).waitFor();
   check(await page.locator('.shard-record .title-azure').count()===1,'friend card displays server title style');

@@ -181,6 +181,7 @@ export const MATERIALS = [
 
 /* ================= 消耗品 ================= */
 export const CONSUMABLES = [
+ {id:'fanzhao',name:'返照丹',cat:'pill',price:{cultivation:0},craftOnly:true,weight:.1,effect:{type:'cultivation_boost',add:.15,durationMs:15*60000},desc:'每份丹方累计失败三炉后首次收获的变异丹。修炼速度+15%，持续15分钟；同类丹药不叠加。'},
  {id:'shilingdan',name:'蚀灵丹',cat:'pill',price:{cultivation:180},weight:.1,effect:{type:'battle_poison',add:.03,durationMs:3600000},desc:'一小时内激活毒丹流；命中叠毒，最多五层。需丹修与药性数据库；普通攻击降低15%。'},
   {
     id: 'zhujidan', name: '筑基丹', cat: 'pill', price: { cultivation: 300 },

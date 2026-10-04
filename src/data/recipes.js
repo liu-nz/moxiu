@@ -6,6 +6,7 @@
  */
 
 import { MATERIALS } from './items.js';
+import { EQUIPMENT_DESIGNS } from './equipmentDesigns.js';
 
 /** 炼丹配方 */
 export const ALCHEMY_RECIPES = [
@@ -65,6 +66,8 @@ export const FORGE_RECIPES = [
 ];
 
 export const ALCHEMY_MAP = Object.fromEntries(ALCHEMY_RECIPES.map((r) => [r.id, r]));
+FORGE_RECIPES.push(...EQUIPMENT_DESIGNS.map(d=>({id:`design_${d.id}`,name:d.name,design:d.id,slot:d.slot,secret:d.secret,desc:d.note,mat:d.stage>=11?'lingjin':'yinjing',qty:2,cost:d.stage>=11?700:240,tierMin:1,tierMax:1,success:.78,unlockStage:d.stage})));
+
 export const FORGE_MAP = Object.fromEntries(FORGE_RECIPES.map((r) => [r.id, r]));
 
 export function matName(id) {

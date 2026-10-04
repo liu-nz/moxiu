@@ -1,3 +1,4 @@
+import { discoverDungeon } from './discoveries.js';
 import {sourceOpen,worldState} from '../data/worldStates.js';
 import {hasAffix} from '../data/affixes.js';
 /**
@@ -135,6 +136,7 @@ function grantRewards(state, d, diff, result, silent) {
     const slotType = ['heart', 'move', 'move', 'special'][Math.floor(Math.random() * 4)];
     const sk = rollSkill(slotType, randomSkillTier(3), randomGrade(), skillScale(d));
     state.skillBag.push(sk);
+    markCollection(state,'skills',`${sk.slot}:${sk.tier}`);
     result.rewards.skills.push(sk);
   }
 
@@ -230,6 +232,10 @@ export function runDungeon(state, dungeonId, diffId, opts = {}) {
     grantRewards(state, d, diff, result, silent);
     if(d.id==='source'){state.tales.flags.source_discovered='recorded';logGood(state,'灵脉溯源：逆流并非天灾，另一个界门正在抽取地脉。');}
     const key = `${dungeonId}:${diffId}`;
+    markCollection(state,'dungeons',key);
+    discoverDungeon(state,dungeonId);
+    for(const m of result.rewards.materials)markCollection(state,'drops',`${dungeonId}:${m.id}`);
+    for(const g of result.rewards.goods)markCollection(state,'drops',`${dungeonId}:${g.itemId}`);
     state.dungeon.cleared[key] = (state.dungeon.cleared[key] || 0) + 1;
     if (!silent) {
       logGood(state, `通关「${d.name} · ${diff.name}」：灵石 +${fmtInt(result.rewards.stone)}，修为 +${fmtInt(result.rewards.cultivation)}。`);
@@ -239,6 +245,11 @@ export function runDungeon(state, dungeonId, diffId, opts = {}) {
     }
   } else {
     state.dungeon.fails += 1;
+    const flag=`map_${dungeonId}`;
+    if(!state.tales.flags[flag]){
+      state.tales.flags[flag]='found';
+      logGood(state,`败退时带回「${d.name}」地图残片。探索的连续故事可整理这条线索；同一秘境仅发现一次。`);
+    }
     if (!silent) {
       logWarn(state, `在「${d.name} · ${diff.name}」第 ${result.clearedAtWave} 波败退（${result.waves[result.waves.length - 1].enemy}）。体力已消耗。`);
       toast(`败于 ${d.name}`, 'warn');

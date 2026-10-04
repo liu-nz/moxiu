@@ -7,7 +7,8 @@ import { actions } from './game-actions.js';
 import { SHARED_COMMANDS, validateShared, runShared } from '../systems/player-community.js';
 import { combatPower, cultivationRate } from '../systems/character.js';
 import { bindActivity } from '../systems/daily.js';
-import { markCollection } from '../systems/collection.js';
+import { discoverResearch } from '../systems/discoveries.js';
+import { syncCollection, markCollection } from '../systems/collection.js';
 export { SHARED_COMMANDS };
 
 const optionKeys = {
@@ -75,6 +76,8 @@ export function settleGame(previous, action, args, now, owned = [], title = null
     if (action === 'gear.switchPath' && result.ok) state.tutorial.done.path = true;
     if (action === 'reincarnation.ascend') bindActivity(state, activity);
   }
+  discoverResearch(state);
+  syncCollection(state);
   state.savedAt = now;
   updateTutorial(state);
   for (const balance of Object.values(state.currency)) {

@@ -1,4 +1,5 @@
 /** 当地仓库是暂存，不跨界搬运；生产溢出和异界作物留在修仙仓库。 */
+import { markCollection } from './collection.js';
 import { ITEM_MAP } from '../data/items.js';
 import { addItem, removeEntry, countOf, carryWeight, validQuantity } from './inventory.js';
 import { carryCapacity } from './rift.js';
@@ -35,6 +36,7 @@ export function withdrawCargo(state, itemId, quality, qty) {
   entry.qty-=qty;state.cargo.storage[state.side]=state.cargo.storage[state.side].filter(e=>e.qty>0);addItem(state,itemId,qty,quality);emit(EV.STATE);return {ok:true};
 }
 export function addProduced(state,itemId,qty,quality='common',world='cultivation') {
+  markCollection(state,'items',itemId);
   const item=ITEM_MAP[itemId];
   if(item && (state.side!==world || carryWeight(state)+item.weight*qty>carryCapacity(state)+1e-8)) {store(state,world,itemId,qty,quality);return {stored:true,world};}
   addItem(state,itemId,qty,quality);return {stored:false};

@@ -24,7 +24,7 @@ check(!fulfillCommission(s,'collector-quality').ok,'quality delivery cannot repe
 s=fresh();s.side='modern';addItem(s,'lingmi',3);check(acceptCommission(s,'professor-sample').ok && fulfillCommission(s,'professor-sample').ok,'first chain delivery');
 check(commissionBoard(s,'cultivation').some(x=>x.id==='professor-tools') && !commissionBoard(s,'modern').some(x=>x.id==='professor-sample'),'chain advances and closes prior step');
 s=fresh();s.side='cultivation';check(acceptCommission(s,'urgent-workshop').ok,'timed order accepted');s.world.clockMs+=12*3600000;addItem(s,'jingmi',2);check(!fulfillCommission(s,'urgent-workshop').ok && countOf(s,'jingmi')===2,'expiry does not consume goods');
-for(const arc of STORY_ARCS.filter(a=>!['broken_relay','clinic_lights'].includes(a.id) && !a.id.startsWith('bond_') && !['gate_origin','other_crosser','leak_inquiry'].includes(a.id)))for(const branch of [0,1]){
+for(const arc of STORY_ARCS.filter(a=>!a.continuation && !['broken_relay','clinic_lights'].includes(a.id) && !a.id.startsWith('bond_') && !['gate_origin','other_crosser','leak_inquiry'].includes(a.id)))for(const branch of [0,1]){
  s=fresh();s.player.stage=10;let root=STORY_TALES.find(t=>t.arc===arc.id&&!t.requiresFlag);s.side=root.world;
  for(let i=0;i<3;i++){check(followStory(s,arc.id).ok,'story chapter eligible');check(resolveTale(s,i?0:branch).ok,'story choice settles');s.world.clockMs+=3*3600000;s.tales.schedule=null;s.world.clockMs+=86400000;s.side=s.side==='modern'?'cultivation':'modern';}
  check(s.tales.flags[arc.done]===(branch?'protect':'investigate'),'branch-specific ending');check(!followStory(s,arc.id).ok,'story cannot replay');

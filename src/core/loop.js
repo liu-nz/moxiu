@@ -22,6 +22,7 @@ import { tickFarm, nextFarmEvent } from '../systems/farm.js';
 import { tickRanch, nextRanchEvent } from '../systems/ranch.js';
 import { tickAlchemy, nextAlchemyEvent } from '../systems/alchemy.js';
 import { tickIndustries, nextIndustryEvent } from '../systems/industries.js';
+import { discoverResearch } from '../systems/discoveries.js';
 import { tickResearch } from '../systems/research.js';
 import { tickTales, nextTaleEvent } from '../systems/tales.js';
 import { tickTradehouse } from '../systems/tradehouse.js';
@@ -187,6 +188,7 @@ function runSystems(state, dtWorld, dtReal) {
   tickAlchemy(state, dtWorld);
   tickIndustries(state, dtWorld);
   tickResearch(state, dtWorld);
+  discoverResearch(state);
   tickTales(state, dtWorld);
   tickTradehouse(state, dtWorld);
   tickAutoBattle(state, dtWorld);

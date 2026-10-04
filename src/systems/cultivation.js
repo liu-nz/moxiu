@@ -165,6 +165,13 @@ export function attemptBreakthrough(state) {
   const lossMul = breakthroughLossMultiplier(state);
   const lost = state.player.cultivation * BREAKTHROUGH_FAIL_LOSS * lossMul;
   state.player.cultivation = Math.max(0, state.player.cultivation - lost);
+  const memories=state.player.failureNotes ||= [];
+  if(!memories.includes(state.player.stage)){
+    memories.push(state.player.stage);
+    state.player.buffs=state.player.buffs.filter(b=>b.id!=='failure_insight');
+    state.player.buffs.push({id:'failure_insight',name:'经脉领悟',until:state.world.clockMs+30*60000,mods:{cultSpeed:.1}});
+    logGood(state,'从逸散的灵气中辨认出一条经脉：修炼速度 +10%，持续30分钟。每个突破阶段仅领悟一次。');
+  }
   const left = Math.max(0, BREAKTHROUGH_PITY - state.player.breakthroughFails);
   logWarn(state, `突破失败。修为逸散 ${fmtInt(lost)}${lossMul < 1 ? '（灵能电池抵消了一半）' : ''}，境界未损。${left > 0 ? `再失败 ${left} 次后将进入保底。` : '下次突破必定成功。'}`);
   emit(EV.BREAKTHROUGH, { success: false, fails: state.player.breakthroughFails });

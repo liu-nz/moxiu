@@ -68,6 +68,14 @@ export function craft(state, id, times = 1, { auxId = 'plain', silent = false, r
       made += r.qty;
     } else {
       failed++;
+      const failures=state.crafting.failures ||= {};
+      failures[id]=(failures[id] || 0)+1;
+      const mutation=`mutation_${id}`;
+      if(failures[id]>=3 && !state.tales.flags[mutation]){
+        state.tales.flags[mutation]='found';
+        addProduced(state,'fanzhao',1);
+        logGood(state,`三次失败留下异变药性：收获返照丹一枚。这份丹方的变异发现仅一次，轮回后不重领。`);
+      }
       if (rng() < st.tox) {
         const loss = Math.min(Math.round(st.cost * .5), Math.max(0, state.currency.stone - reserveStone));
         state.currency.stone -= loss;

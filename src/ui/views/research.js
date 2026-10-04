@@ -69,7 +69,7 @@ export function renderResearch(state, ctx) {
   );
 
   const branches = h('div.flex-col.gap-4', null, BRANCHES.map((b) => {
-    const list = projectsOf(b.id).map((p) => projectStatus(state, p.id));
+    const list = projectsOf(b.id).filter(p=>!p.secret || (state.collection?.secrets || []).includes(p.secret)).map((p) => projectStatus(state, p.id));
     const done = list.filter((x) => x.done).length;
     return panelFlush(b.name, `${b.dir}　·　${done}/${list.length}`,
       ...list.map((st) => {

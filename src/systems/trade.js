@@ -107,6 +107,7 @@ export function dropEntry(state, entryUid, qty = 1) {
 
 /** 修仙界坊市：本地消耗品 */
 export function buyConsumable(state, id) {
+  if(CONSUMABLE_MAP[id]?.craftOnly)return {ok:false,reason:'此丹仅由炼制异变发现，坊市不出售。'};
   if (state.side !== 'cultivation') return { ok: false, reason: '丹药只能在修仙界坊市购买。' };
   const c = CONSUMABLE_MAP[id];
   if (!c) return { ok: false, reason: '坊市里没有这种丹药。' };

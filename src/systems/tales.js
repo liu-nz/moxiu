@@ -16,6 +16,10 @@ import { advanceIfReady } from './cultivation.js';
 import { sectMods } from './character.js';
 import { lifestyleEffects } from './lifestyle.js';
 import { projectEffects } from '../data/projects.js';
+import { rollEquipment } from '../data/equipment.js';
+import { applyDesign, DESIGN_MAP } from '../data/equipmentDesigns.js';
+import { baseAttrs } from '../data/realms.js';
+import { markCollection } from './collection.js';
 import { STORY_ARCS } from '../data/stories.js';
 
 /** 数值随境界放大，避免后期遇到「捡到 50 灵石」这种废话 */
@@ -58,6 +62,14 @@ function applyEffect(state, eff, scale) {
     for (const it of eff.items) {
       addItem(state, it.id, it.qty || 1, it.quality || 'common');
       notes.push(`${getItem(it.id)?.name || it.id} ×${it.qty || 1}`);
+    }
+  }
+  if(eff.equipmentDesign){
+    const design=DESIGN_MAP[eff.equipmentDesign];
+    if(design){
+      const eq=applyDesign(rollEquipment(design.slot,1,Math.max(1,baseAttrs(state.player.stage).atk*1.8)),design.id);
+      state.bag.push(eq);markCollection(state,'equipment',`${eq.slot}:${eq.tier}`);markCollection(state,'designs',design.id);
+      notes.push(`灵品装备：${eq.name}`);
     }
   }
   if (eff.buff) {
@@ -139,7 +151,8 @@ export function pendingTale(state) {
   if (!p) return null;
   const tale=TALE_MAP[p.id];
   if(!tale) return null;
-  const previous=tale.requiresAnyFlag && state.tales.flags?.[tale.requiresAnyFlag];
+  if(tale.blockedFlag && state.tales.flags?.[tale.blockedFlag])return null;
+  const previous=tale.companion && tale.requiresAnyFlag && state.tales.flags?.[tale.requiresAnyFlag];
   return previous ? {...tale,text:(previous === 'listen' ? '她记得你上次愿意倾听，这次先讲起了那个人的后来。' : '她记得你坚持求证，这次带来了可核对的原始记录。') + tale.text} : tale;
 }
 
@@ -151,7 +164,7 @@ export function storyJournal(state) {
     const done = Boolean(state.tales?.flags?.[arc.done]);
     const next = done ? null : current.find(x => x.arc === arc.id) || both.find(x => x.arc === arc.id);
     const wait = state.tales?.count ? Math.max(0, (state.tales.lastAt || 0) + TALE_RATE.minGapMs - now) : 0;
-    const detail = arc.id==='other_crosser'?'金丹开启；下一章需要前一章线索与对应世界':arc.id==='leak_inquiry'?'需要金丹、另一穿越者的线索，以及现代灵气泄漏期间':arc.id.startsWith('bond_') ? '下一章需要更高好感度或前一章见闻' : arc.id === 'gate_origin' ? '下一章需要更高境界或更多轮回次数' : '尚未满足这条故事的境界或前置线索条件';
+    const detail = arc.continuation ? arc.note : arc.id==='other_crosser'?'金丹开启；下一章需要前一章线索与对应世界':arc.id==='leak_inquiry'?'需要金丹、另一穿越者的线索，以及现代灵气泄漏期间':arc.id.startsWith('bond_') ? '下一章需要更高好感度或前一章见闻' : arc.id === 'gate_origin' ? '下一章需要更高境界或更多轮回次数' : '尚未满足这条故事的境界或前置线索条件';
     const reason = done ? '故事已完结' : !next ? detail : next.world !== 'any' && next.world !== state.side ? `下一条线索在${next.world === 'modern' ? '现代世界' : '修仙界'}` : state.tales.pending ? '请先处理当前奇闻' : stats.today >= stats.quota ? '今日奇闻机会已用完，明日 05:00 刷新' : wait ? `线索还需等待 ${Math.ceil(wait / 60000)} 分钟` : `可追寻：${next.name}`;
     return { ...arc, done, next, wait, reason, available: !done && !!next && (next.world === 'any' || next.world === state.side) && !state.tales.pending && stats.today < stats.quota && !wait };
   });

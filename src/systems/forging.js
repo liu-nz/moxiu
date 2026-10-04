@@ -14,10 +14,11 @@ import { countCraft } from './daily.js';
 import { logGood, logWarn, toast } from './log.js';
 import { emit, EV } from '../core/bus.js';
 import { fmtInt, clamp } from '../core/util.js';
+import { applyDesign } from '../data/equipmentDesigns.js';
 import { markCollection } from './collection.js';
 
 export function unlockedRecipes(state) {
-  return FORGE_RECIPES.filter((r) => state.player.stage >= r.unlockStage);
+  return FORGE_RECIPES.filter((r) => state.player.stage >= r.unlockStage && (!r.secret || (state.collection?.secrets || []).includes(r.secret)));
 }
 
 /** 锻造出的装备规模跟随当前境界，保证永远有用 */
@@ -27,9 +28,10 @@ export function forgeScale(state) {
 }
 
 export function recipeStatus(state, id) {
-  const r = FORGE_MAP[id];
+  const r = Object.hasOwn(FORGE_MAP,id) ? FORGE_MAP[id] : null;
   if (!r) return { ok: false, reason: '没有这个图谱。' };
   if (state.player.stage < r.unlockStage) return { ok: false, reason: '境界不足。', locked: true };
+  if(r.secret && !(state.collection?.secrets || []).includes(r.secret))return {ok:false,locked:true,reason:'尚未发现对应隐藏图谱。'};
   const have = countOf(state, r.mat);
   const matOk = have >= r.qty;
   const stoneOk = state.currency.stone >= r.cost;
@@ -57,6 +59,7 @@ export function forge(state, id, slotId) {
   if (!SLOT_MAP[slotId]) return { ok: false, reason: '部位不合法。' };
 
   const r = st.recipe;
+  if(r.slot && r.slot!==slotId)return {ok:false,reason:'该图谱只能打造指定部位。'};
   const fx = researchEffects(state);
   removeItem(state, r.mat, r.qty);
   state.currency.stone -= r.cost;
@@ -77,6 +80,7 @@ export function forge(state, id, slotId) {
     upgraded = true;
   }
   const eq = rollEquipment(slotId, tier, forgeScale(state));
+  if(r.design){applyDesign(eq,r.design);markCollection(state,'designs',r.design);}
   markCollection(state, 'equipment', `${eq.slot}:${eq.tier}`);
   eq.forged = true;
   state.bag.push(eq);

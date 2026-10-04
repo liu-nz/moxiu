@@ -1,3 +1,4 @@
+import {NPC_ARCS,NPC_TALES} from './npcStories.js';
 import {CROSSER_ARC,CROSSER_TALES} from './crosserStory.js';
 // Each branch ends once. Flags, rather than the rolling event log, preserve choices.
 export const STORY_ARCS = [
@@ -131,3 +132,6 @@ STORY_TALES.push({"id": "gate_origin_5", "name": "相连的世界", "world": "mo
 
 STORY_ARCS.push(CROSSER_ARC,{id:'leak_inquiry',name:'泄漏调查',done:'leak_inquiry_done',rewards:'两界观测记录',note:'金丹并找到另一穿越者线索后，在现代灵气泄漏期间追寻。'});
 STORY_TALES.push(...CROSSER_TALES);
+
+STORY_ARCS.push(...NPC_ARCS);
+STORY_TALES.push(...NPC_TALES);

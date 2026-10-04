@@ -19,7 +19,9 @@ const CLIENT_DIALOGUE = {
 export const CLIENT_TIERS = ['陌生人','合作客户','长期伙伴','知情者','两界盟友'];
 export function clientRelation(state, client) {
   const points = state.commissions?.relations?.[client] || 0;
-  return {dialogue:CLIENT_DIALOGUE[client]?.[Math.min(4,Math.floor(points / 20))] || '按时交付，关系会逐渐成长。',points, tier:CLIENT_TIERS[Math.min(4,Math.floor(points / 20))]};
+  const ending=state.tales?.flags || {};
+  const memory=client==='林教授' && ending.professor_after_done ? ending.professor_after_done==='open'?'双语论文收到新的复核申请，我们继续一起核验。':'匿名约定依然有效，我会先替你保护来源。' : client==='陈老板' && ending.collector_after_done ? ending.collector_after_done==='restore'?'展柜的补痕很受关注，修复也成了故事的一部分。':'那一处缺角留下了新的姓名，我很庆幸没有抹去它。' : client==='炼器大师' && ending.workshop_after_done ? ending.workshop_after_done==='sword'?'徒弟在继续修订青穗剑，记得出剑也要知止。':'雨露袍已经护住了几个新人，徒弟终于理解了守护。' : null;
+  return {dialogue:memory || CLIENT_DIALOGUE[client]?.[Math.min(4,Math.floor(points / 20))] || '按时交付，关系会逐渐成长。',points, tier:CLIENT_TIERS[Math.min(4,Math.floor(points / 20))]};
 }
 const ORDERS = Object.freeze([
  {id:'crosser-monitor',side:'modern',item:'gufaqi',qty:1,source:'farm',client:'林教授',type:'special',minStage:14,storyEnding:'cooperate',title:'阵眼校验委托',note:'调停结局开放：使用古法器核对公开监测方案。'},

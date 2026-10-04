@@ -111,3 +111,5 @@ docs/                   开发计划、GDD 原文、数据库迁移脚本
 - Idle 定位：在线收益不能碾压挂机收益，深度玩家收益只比轻度玩家高 30-50%
 - 科技平衡：现代科技中期走向融合，后期修仙反超
 - **Pay-to-Win 禁止**：付费不能成为最优 Build 的一部分
+
+A–B 体验更新已加入两界录、三项当前目标、三组隐藏组合、有限次数的失败发现、三位客户后续分支与六份定向装备图谱。入口与触发条件见 [DISCOVERY_UPDATE.md](DISCOVERY_UPDATE.md)，规则与界面验证分别见 `tests/discovery.mjs`、`tests/discovery.cjs`。

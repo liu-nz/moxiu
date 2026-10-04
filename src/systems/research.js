@@ -3,6 +3,7 @@
  * 研究点来源：现代研究所挂机产出 + 修仙材料兑换。
  */
 
+import { discoverResearch } from './discoveries.js';
 import { PROJECTS, PROJECT_MAP, BRANCHES, projectsOf, RESEARCH_LAB, materialToRP, canResearch, researchEffects } from '../data/research.js';
 import { MATERIAL_MAP } from '../data/items.js';
 import { sideFactor, SIDE } from '../core/state.js';
@@ -38,6 +39,7 @@ export function doResearch(state, id) {
   state.research.done[id] = state.world.clockMs;
   logHl(state, `灵科研究完成：「${p.name}」—— ${p.effectDesc}。`);
   toast(`研究完成：${p.name}`, 'good');
+  discoverResearch(state);
   updateTutorial(state);
   emit(EV.STATE);
   return { ok: true, project: p };
@@ -80,7 +82,7 @@ export function projectStatus(state, id) {
   const done = !!state.research.done[id];
   const reqOk = p.req.every((r) => state.research.done[r]);
   const affordable = state.research.points >= p.cost;
-  return { project: p, done, reqOk, affordable, available: !done && reqOk && affordable };
+  return { project: p, done, reqOk, affordable, available: !done && reqOk && affordable && (!p.secret || (state.collection?.secrets || []).includes(p.secret)) };
 }
 
 export { PROJECTS, PROJECT_MAP, BRANCHES, projectsOf, RESEARCH_LAB, materialToRP, researchEffects };
